@@ -92,7 +92,22 @@ jobs:
           yes | sdkmanager --licenses
           set -o pipefail
           sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'emulator'
+      # build6 workflow omitted this step; without a keystore, the release
+      # signing config has no storeFile and :app:packageRelease fails with NPE.
+      # Same dev-keystore approach as the build5 workflow (CI only).
+      - name: Generate development keystore (CI only, not a release key)
+        env:
+          ANDROID_TUNNEL_KEYSTORE: ${{ github.workspace }}/src/android-tunnel-dev.jks
+          ANDROID_TUNNEL_STORE_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_ALIAS: android-tunnel-dev
+        run: bash src/scripts/generate-dev-keystore.sh
       - name: Unit tests and release build
+        env:
+          ANDROID_TUNNEL_KEYSTORE: ${{ github.workspace }}/src/android-tunnel-dev.jks
+          ANDROID_TUNNEL_STORE_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_ALIAS: android-tunnel-dev
         run: |
           cd src
           gradle testReleaseUnitTest assembleRelease assembleDebug --stacktrace
