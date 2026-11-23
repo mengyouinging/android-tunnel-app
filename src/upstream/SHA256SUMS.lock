@@ -1,0 +1,8 @@
+# name<TAB>version<TAB>official direct executable URL<TAB>reviewed SHA-256 (of the installed binary in app/src/main/assets/arm64/)
+# Archive SHA-256 values are recorded in UPSTREAM.md. amneziawg-go has no upstream release: built from source, commit 08fe3d33bbb116be09a6183d02609311b8b0c9e8 (2026-09-03), GOOS=android GOARCH=arm64 CGO_ENABLED=0.
+sing-box	v1.14.4	https://github.com/SagerNet/sing-box/releases/download/v1.14.4/sing-box-1.14.4-android-arm64.tar.gz	2ce1c1c2a265e7be21ffa7aaf2b58619986629e9caecfc2d3f80ef4d25b7f965
+easytier-core	v2.6.4	https://github.com/EasyTier/EasyTier/releases/download/v2.6.4/easytier-linux-aarch64-v2.6.4.zip	7bd504e87cad52edacb9ea84ece7397d0afb911101de623a3dfc4a4dbd9e6bb6
+cloudflared	2026.11.1	https://github.com/cloudflare/cloudflared/releases/download/2026.11.1/cloudflared-linux-arm64	b155cec3e48e489cfb8e5c602769fb8c771083018d8881d68b4d18a791567c5a
+wstunnel	v11.1.0	https://github.com/erebe/wstunnel/releases/download/v11.1.0/wstunnel_11.1.0_android_arm64.tar.gz	4e3bcaf352f6a1d00b897fe7de3716b3ae15f8d35df426948a05a03659cb4abf
+amneziawg-go	source-08fe3d33	https://github.com/amnezia-vpn/amneziawg-go (no release; built from source commit 08fe3d33bbb116be09a6183d02609311b8b0c9e8)	fab6b1d82e3c1145df103578c5ba7b667c07f8ebba4fbaba0b5e5af89950fd5e
+awg	source-ee0f0a9	https://github.com/amnezia-vpn/amneziawg-tools (no release; built from source commit ee0f0a9aa34ff0a0da4b3433b9512781cfe02843, NDK r27c aarch64-linux-android33-clang, PLATFORM=linux; install renames wg -> awg)	83d457ce84a0120f1307f5cd8c725cbaa23b82569ca2037487fcf3a9095ac2e6
