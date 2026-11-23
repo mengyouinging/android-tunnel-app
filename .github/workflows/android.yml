@@ -131,9 +131,16 @@ jobs:
             # "Transport endpoint is not connected" (emulated sdcard not
             # ready right after boot). Stream the PNG straight to the host
             # with exec-out instead; no /sdcard involved.
+            # Run #22: main.png caught the launcher, not the app — TCG is slow
+            # and 5s was not enough for MainActivity to reach the foreground.
+            # Wait until it is the focused window (up to 60s) before shooting.
             mkdir -p artifacts
             adb shell am start -n org.example.androidtunnel/.MainActivity
-            sleep 5
+            for i in $(seq 1 30); do
+              if adb shell dumpsys window windows 2>/dev/null | grep -q "mCurrentFocus.*MainActivity"; then break; fi
+              sleep 2
+            done
+            sleep 3
             adb exec-out screencap -p > artifacts/main.png
             adb shell am start -n org.example.androidtunnel/.StatusActivity
             sleep 3
