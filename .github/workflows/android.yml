@@ -1,0 +1,103 @@
+name: Android build and emulator smoke test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+      - uses: android-actions/setup-android@v3
+      - name: Accept SDK licenses and install platform, NDK
+        run: |
+          yes | sdkmanager --licenses
+          sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'emulator' 'ndk;27.2.12479018'
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - name: Unpack source
+        run: |
+          unzip -o android-tunnel-source.zip -d work
+          ls work/src
+          chmod +x work/src/gradlew work/src/scripts/*.sh
+      - name: Fetch and verify upstream arm64 components
+        working-directory: work/src
+        run: ./scripts/fetch-upstream.sh
+      - name: Generate development keystore (CI only, not a release key)
+        working-directory: work/src
+        env:
+          ANDROID_TUNNEL_KEYSTORE: ${{ github.workspace }}/work/src/android-tunnel-dev.jks
+          ANDROID_TUNNEL_STORE_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_ALIAS: android-tunnel-dev
+        run: ./scripts/generate-dev-keystore.sh
+      - name: Unit tests and release build
+        working-directory: work/src
+        env:
+          ANDROID_TUNNEL_KEYSTORE: ${{ github.workspace }}/work/src/android-tunnel-dev.jks
+          ANDROID_TUNNEL_STORE_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_ALIAS: android-tunnel-dev
+        run: ./gradlew testReleaseUnitTest assembleRelease --stacktrace
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-build
+          path: |
+            work/src/app/build/outputs/apk/release/*.apk
+            work/src/app/build/reports/tests/**
+            work/src/app/build/test-results/**
+
+  emulator:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: android-build
+          path: build-artifact
+      - name: Install, launch, and capture screens (Android 9, x86_64)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 28
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            APK=$(ls build-artifact/work/src/app/build/outputs/apk/release/*.apk | head -n 1)
+            echo "installing $APK"
+            ls -l "$APK"
+            adb install -r "$APK"
+            adb shell pm list packages | grep org.example.androidtunnel
+            mkdir -p artifacts
+            adb shell am start -n org.example.androidtunnel/.MainActivity
+            sleep 3
+            adb shell screencap -p /sdcard/main.png
+            adb pull /sdcard/main.png artifacts/main.png
+            adb shell am start -n org.example.androidtunnel/.StatusActivity
+            sleep 2
+            adb shell screencap -p /sdcard/status.png
+            adb pull /sdcard/status.png artifacts/status.png
+            adb shell am start -n org.example.androidtunnel/.SettingsActivity
+            sleep 2
+            adb shell screencap -p /sdcard/settings.png
+            adb pull /sdcard/settings.png artifacts/settings.png
+            adb logcat -d > artifacts/logcat.txt || true
+            ls -l artifacts/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-ui-screenshots
+          path: artifacts/
