@@ -111,12 +111,20 @@ jobs:
         run: |
           cd src
           gradle testReleaseUnitTest assembleRelease assembleDebug --stacktrace
+      # Run #20 failed here: GitHub runners have no KVM, so the emulator
+      # refuses software CPU emulation unless ANDROID_I_WANT_MY_TCG=yes.
+      # TCG is slow, so give boot 1200s and keep the emulator light.
       - name: Emulator install, launch, and capture screens
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          ANDROID_I_WANT_MY_TCG: 'yes'
         with:
           api-level: 35
           arch: x86_64
           profile: pixel_2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
           script: |
             adb install -r src/app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -n org.example.androidtunnel/.MainActivity
