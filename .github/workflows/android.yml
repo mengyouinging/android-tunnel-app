@@ -5,93 +5,116 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
+  fetch-upstream:
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - name: Unpack source
+        run: |
+          unzip -o android-tunnel-source.zip -d .
+          ls src
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-      - uses: actions/setup-go@v5
-        with:
-          go-version: '1.23'
       # setup-android@v3 fails: it runs `sdkmanager tools`, a package removed
-      # from the SDK repo (exit 1). The ubuntu runner already ships an SDK,
-      # so use it directly instead of that action.
+      # from the SDK repo (exit 1). The ubuntu runner already ships an SDK.
       - name: Use preinstalled Android SDK
         run: |
           echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
           echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
           echo "/usr/local/lib/android/sdk/platform-tools" >> "$GITHUB_PATH"
-      - name: Accept SDK licenses and install platform, NDK
+      - name: Test checksum verification failures
+        run: python3 src/scripts/test-verify-upstream.py
+      - name: Install pinned NDK
+        run: sdkmanager 'ndk;27.2.12479018'
+      - name: Fetch tagged sources, build and verify all six components
         run: |
-          yes | sdkmanager --licenses
-          sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'emulator' 'ndk;27.2.12479018'
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
-      - name: Unpack source
+          set -euo pipefail
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          mkdir -p artifacts
+          bash src/scripts/fetch-upstream.sh 2>&1 | tee artifacts/fetch-upstream.log
+      - name: Record all six checksum results
+        if: always()
         run: |
-          unzip -o android-tunnel-source.zip -d work
-          ls work/src
-          chmod +x work/src/gradlew work/src/scripts/*.sh
-      - name: Fetch and verify upstream arm64 components
-        working-directory: work/src
-        run: ./scripts/fetch-upstream.sh
-      - name: Generate development keystore (CI only, not a release key)
-        working-directory: work/src
-        env:
-          ANDROID_TUNNEL_KEYSTORE: ${{ github.workspace }}/work/src/android-tunnel-dev.jks
-          ANDROID_TUNNEL_STORE_PASSWORD: android-tunnel-dev
-          ANDROID_TUNNEL_KEY_PASSWORD: android-tunnel-dev
-          ANDROID_TUNNEL_KEY_ALIAS: android-tunnel-dev
-        run: ./scripts/generate-dev-keystore.sh
-      - name: Unit tests and release build
-        working-directory: work/src
-        env:
-          ANDROID_TUNNEL_KEYSTORE: ${{ github.workspace }}/work/src/android-tunnel-dev.jks
-          ANDROID_TUNNEL_STORE_PASSWORD: android-tunnel-dev
-          ANDROID_TUNNEL_KEY_PASSWORD: android-tunnel-dev
-          ANDROID_TUNNEL_KEY_ALIAS: android-tunnel-dev
-        run: ./gradlew testReleaseUnitTest assembleRelease --stacktrace
+          set -euo pipefail
+          mkdir -p artifacts
+          bash src/scripts/verify-upstream.sh | tee artifacts/upstream-verification.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-upstream-arm64
+          path: src/app/src/main/assets/arm64/
+          if-no-files-found: error
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-build
-          path: |
-            work/src/app/build/outputs/apk/release/*.apk
-            work/src/app/build/reports/tests/**
-            work/src/app/build/test-results/**
+          name: upstream-verification
+          path: artifacts/
+          if-no-files-found: error
 
-  emulator:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
+  android:
+    needs: fetch-upstream
+    runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v4
+      - name: Unpack source
+        run: |
+          unzip -o android-tunnel-source.zip -d .
+          ls src
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      # setup-android@v3 fails: it runs `sdkmanager tools`, a package removed
+      # from the SDK repo (exit 1). The ubuntu runner already ships an SDK.
+      - name: Use preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/lib/android/sdk/platform-tools" >> "$GITHUB_PATH"
       - uses: actions/download-artifact@v4
         with:
-          name: android-build
-          path: build-artifact
-      - name: Install, launch, and capture screens (Android 9, x86_64)
+          name: verified-upstream-arm64
+          path: src/app/src/main/assets/arm64/
+      - name: Verify transferred components before packaging
+        run: bash src/scripts/verify-upstream.sh
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Accept SDK licenses and install platform
+        run: |
+          # sdkmanager may close stdin while yes is still writing (SIGPIPE).
+          # Keep sdkmanager's exit status, without failing on yes's status.
+          set +o pipefail
+          yes | sdkmanager --licenses
+          set -o pipefail
+          sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'emulator'
+      - name: Unit tests and release build
+        run: |
+          cd src
+          gradle testReleaseUnitTest assembleRelease assembleDebug --stacktrace
+      - name: Emulator install, launch, and capture screens
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 28
-          target: google_apis
+          api-level: 35
           arch: x86_64
           profile: pixel_2
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
-          disable-animations: true
           script: |
-            APK=$(ls build-artifact/work/src/app/build/outputs/apk/release/*.apk | head -n 1)
-            echo "installing $APK"
-            ls -l "$APK"
-            adb install -r "$APK"
-            adb shell pm list packages | grep org.example.androidtunnel
-            mkdir -p artifacts
+            adb install -r src/app/build/outputs/apk/debug/app-debug.apk
             adb shell am start -n org.example.androidtunnel/.MainActivity
             sleep 3
+            mkdir -p artifacts
             adb shell screencap -p /sdcard/main.png
             adb pull /sdcard/main.png artifacts/main.png
             adb shell am start -n org.example.androidtunnel/.StatusActivity
@@ -102,10 +125,12 @@ jobs:
             sleep 2
             adb shell screencap -p /sdcard/settings.png
             adb pull /sdcard/settings.png artifacts/settings.png
-            adb logcat -d > artifacts/logcat.txt || true
-            ls -l artifacts/
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-ui-screenshots
-          path: artifacts/
+          name: android-build-and-ui
+          path: |
+            src/app/build/outputs/apk/release/*.apk
+            src/app/build/outputs/apk/debug/*.apk
+            src/app/build/reports/tests/**
+            artifacts/*.png
