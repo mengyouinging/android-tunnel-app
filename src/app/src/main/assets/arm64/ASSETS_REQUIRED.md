@@ -1,0 +1,1 @@
+Six reviewed arm64 executables are bundled and verified by SHA-256 (see `src/upstream/SHA256SUMS.lock`): amneziawg-go, awg (AmneziaWG control tool, applies `awg setconf`), sing-box, easytier-core, cloudflared, wstunnel. ComponentManager verifies each against `arm64/SHA256SUMS` on first run before any component starts.
