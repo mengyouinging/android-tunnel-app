@@ -1,0 +1,87 @@
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0
+  0     0    0     0    0     0      0      0 --:--:--  0:00:03 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:04 --:--:--     0 79 24.4M   79 19.3M    0     0  3302k      0  0:00:07  0:00:05  0:00:02 9929k100 24.4M  100 24.4M    0     0  4093k      0  0:00:06  0:00:06 --:--:-- 11.5M
+/workspace/scratch/2394e9c69f86/work/tmp/tmp.Tc3fU8k0Fq/sing-box.tar.gz: OK
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0
+  0     0    0     0    0     0      0      0 --:--:--  0:00:03 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:04 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:05 --:--:--     0100 19.5M  100 19.5M    0     0  3487k      0  0:00:05  0:00:05 --:--:-- 10.6M
+/workspace/scratch/2394e9c69f86/work/tmp/tmp.Tc3fU8k0Fq/easytier.zip: OK
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0
+  0     0    0     0    0     0      0      0 --:--:--  0:00:03 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:04 --:--:--     0 84 36.0M   84 30.3M    0     0  5755k      0  0:00:06  0:00:05  0:00:01 15.5M100 36.0M  100 36.0M    0     0  6667k      0  0:00:05  0:00:05 --:--:-- 17.1M
+/workspace/scratch/2394e9c69f86/work/src/app/src/main/assets/arm64/cloudflared: OK
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:01 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:02 --:--:--     0
+  0     0    0     0    0     0      0      0 --:--:--  0:00:03 --:--:--     0  0     0    0     0    0     0      0      0 --:--:--  0:00:04 --:--:--     0 92 5081k   92 4685k    0     0   973k      0  0:00:05  0:00:04  0:00:01 3344k100 5081k  100 5081k    0     0  1045k      0  0:00:04  0:00:04 --:--:-- 3501k
+/workspace/scratch/2394e9c69f86/work/tmp/tmp.Tc3fU8k0Fq/wstunnel.tar.gz: OK
+Cloning into '/workspace/scratch/2394e9c69f86/work/tmp/tmp.Tc3fU8k0Fq/amneziawg-go'...
+Note: switching to '08fe3d33bbb116be09a6183d02609311b8b0c9e8'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+amneziawg-go source: v3.1.20261116 08fe3d33bbb116be09a6183d02609311b8b0c9e8
+go: downloading golang.org/x/sys v0.36.0
+go: downloading golang.org/x/net v0.44.0
+go: downloading golang.org/x/crypto v0.42.0
+/workspace/scratch/2394e9c69f86/work/src/app/src/main/assets/arm64/amneziawg-go: go1.27.1
+	path	github.com/amnezia-vpn/amneziawg-go/v3
+	mod	github.com/amnezia-vpn/amneziawg-go/v3	v3.1.20261116	
+	dep	golang.org/x/crypto	v0.42.0	h1:chiH31gIWm57EkTXpwnqf8qeuMUi0yekh6mT2AvFlqI=
+	dep	golang.org/x/net	v0.44.0	h1:evd8IRDyfNBMBTTY5XRF1vaZlD+EmWx6x8PkhR04H/I=
+	dep	golang.org/x/sys	v0.36.0	h1:KVRy2GtZBrk1cBYA7MKu5bEZFxQk4NIDV6RLVcC8o0k=
+	build	-buildmode=exe
+	build	-compiler=gc
+	build	-trimpath=true
+	build	DefaultGODEBUG=cryptocustomrand=1,tlssecpmlkem=0,tracebacklabels=0,urlstrictcolons=0,x509sslcertoverrideplatform=0
+	build	CGO_ENABLED=0
+	build	GOARCH=arm64
+	build	GOOS=android
+	build	GOARM64=v8.0
+	build	vcs=git
+	build	vcs.revision=08fe3d33bbb116be09a6183d02609311b8b0c9e8
+	build	vcs.time=2026-11-16T10:17:37Z
+	build	vcs.modified=false
+From https://github.com/amnezia-vpn/amneziawg-tools
+ * branch            ee0f0a9aa34ff0a0da4b3433b9512781cfe02843 -> FETCH_HEAD
+HEAD is now at ee0f0a9 feat: add awg 3.1 params
+make: Entering directory '/workspace/scratch/2394e9c69f86/work/tmp/tmp.Tc3fU8k0Fq/amneziawg-tools/src'
+  CC      wg.o
+  CC      config.o
+  CC      curve25519.o
+  CC      encoding.o
+  CC      genkey.o
+  CC      ipc.o
+  CC      pubkey.o
+  CC      set.o
+  CC      setconf.o
+  CC      show.o
+  CC      showconf.o
+  CC      terminal.o
+  CC      type.o
+  LD      wg
+make: Leaving directory '/workspace/scratch/2394e9c69f86/work/tmp/tmp.Tc3fU8k0Fq/amneziawg-tools/src'
+component	expected_sha256	actual_sha256	result
+sing-box	2ce1c1c2a265e7be21ffa7aaf2b58619986629e9caecfc2d3f80ef4d25b7f965	2ce1c1c2a265e7be21ffa7aaf2b58619986629e9caecfc2d3f80ef4d25b7f965	PASS
+easytier-core	7bd504e87cad52edacb9ea84ece7397d0afb911101de623a3dfc4a4dbd9e6bb6	7bd504e87cad52edacb9ea84ece7397d0afb911101de623a3dfc4a4dbd9e6bb6	PASS
+cloudflared	b155cec3e48e489cfb8e5c602769fb8c771083018d8881d68b4d18a791567c5a	b155cec3e48e489cfb8e5c602769fb8c771083018d8881d68b4d18a791567c5a	PASS
+wstunnel	4e3bcaf352f6a1d00b897fe7de3716b3ae15f8d35df426948a05a03659cb4abf	4e3bcaf352f6a1d00b897fe7de3716b3ae15f8d35df426948a05a03659cb4abf	PASS
+amneziawg-go	fab6b1d82e3c1145df103578c5ba7b667c07f8ebba4fbaba0b5e5af89950fd5e	fab6b1d82e3c1145df103578c5ba7b667c07f8ebba4fbaba0b5e5af89950fd5e	PASS
+awg	83d457ce84a0120f1307f5cd8c725cbaa23b82569ca2037487fcf3a9095ac2e6	83d457ce84a0120f1307f5cd8c725cbaa23b82569ca2037487fcf3a9095ac2e6	PASS
+Upstream assets installed and verified under /workspace/scratch/2394e9c69f86/work/src/app/src/main/assets/arm64

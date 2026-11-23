@@ -1,0 +1,2 @@
+actionlint v1.7.12: PASS (both workflow paths; shellcheck not enabled)
+bash -n fetch-upstream.sh verify-upstream.sh: PASS

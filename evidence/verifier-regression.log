@@ -1,0 +1,13 @@
+test_all_six_pass (__main__.VerifyUpstreamTest.test_all_six_pass) ... ok
+test_duplicate_component_rejected (__main__.VerifyUpstreamTest.test_duplicate_component_rejected) ... ok
+test_missing_binary_checks_remaining_components (__main__.VerifyUpstreamTest.test_missing_binary_checks_remaining_components) ... ok
+test_missing_lock_component_rejected (__main__.VerifyUpstreamTest.test_missing_lock_component_rejected) ... ok
+test_runtime_manifest_mismatch (__main__.VerifyUpstreamTest.test_runtime_manifest_mismatch) ... ok
+test_symlink_is_rejected (__main__.VerifyUpstreamTest.test_symlink_is_rejected) ... ok
+test_tampering_checks_remaining_components (__main__.VerifyUpstreamTest.test_tampering_checks_remaining_components) ... ok
+test_unexpected_lock_component_rejected (__main__.VerifyUpstreamTest.test_unexpected_lock_component_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 0.202s
+
+OK
