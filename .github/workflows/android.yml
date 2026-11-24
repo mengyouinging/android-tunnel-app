@@ -128,6 +128,11 @@ jobs:
           disable-animations: true
           script: |
             adb install -r src/app/build/outputs/apk/debug/app-debug.apk || (sleep 10 && adb install -r src/app/build/outputs/apk/debug/app-debug.apk)
+            # Run #29: taps cannot dismiss a System UI ANR dialog — it lives in
+            # the ANR'd SystemUI process, whose UI thread never handles the tap.
+            # Restart SystemUI so the dialog dies with its process.
+            adb shell am force-stop com.android.systemui || true
+            sleep 15
             # Run #21: screencap to /sdcard failed with
             # "Transport endpoint is not connected" (emulated sdcard not
             # ready right after boot). Stream the PNG straight to the host
