@@ -127,7 +127,7 @@ jobs:
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
           script: |
-            adb install -r src/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r src/app/build/outputs/apk/debug/app-debug.apk || (sleep 10 && adb install -r src/app/build/outputs/apk/debug/app-debug.apk)
             # Run #21: screencap to /sdcard failed with
             # "Transport endpoint is not connected" (emulated sdcard not
             # ready right after boot). Stream the PNG straight to the host
