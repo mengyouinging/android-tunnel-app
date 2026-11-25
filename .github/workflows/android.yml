@@ -132,6 +132,10 @@ jobs:
             # the ANR'd SystemUI process, whose UI thread never handles the tap.
             # Restart SystemUI so the dialog dies with its process.
             adb shell am force-stop com.android.systemui || true
+            # Run #30: the visible dialog was "Settings isn't responding"
+            # (com.android.settings ANR), not SystemUI — force-stop Settings
+            # too so its dialog dies with its process, then re-check.
+            adb shell am force-stop com.android.settings || true
             sleep 15
             # Run #21: screencap to /sdcard failed with
             # "Transport endpoint is not connected" (emulated sdcard not
