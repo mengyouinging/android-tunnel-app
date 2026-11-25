@@ -128,6 +128,9 @@ jobs:
           disable-animations: true
           script: |
             adb install -r src/app/build/outputs/apk/debug/app-debug.apk || (sleep 10 && adb install -r src/app/build/outputs/apk/debug/app-debug.apk)
+            # Run #39: MainActivity was blocked by the notification permission dialog (not an ANR).
+            # Grant it up front so the dialog never appears.
+            adb shell pm grant org.example.androidtunnel android.permission.POST_NOTIFICATIONS || true
             # Run #29: taps cannot dismiss a System UI ANR dialog — it lives in
             # the ANR'd SystemUI process, whose UI thread never handles the tap.
             # Restart SystemUI so the dialog dies with its process.
@@ -157,7 +160,7 @@ jobs:
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1380 || true
             sleep 3
-            for i in 1 2 3 4 5 6; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/6)"; sleep 10; done
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
             adb exec-out screencap -p > artifacts/main.png
             adb shell am start -n org.example.androidtunnel/.StatusActivity
             for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do adb shell dumpsys window windows 2>/dev/null | grep -q "mCurrentFocus.*StatusActivity" && break; sleep 2; done
@@ -168,7 +171,7 @@ jobs:
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1380 || true
             sleep 3
-            for i in 1 2 3 4 5 6; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/6)"; sleep 10; done
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
             adb exec-out screencap -p > artifacts/status.png
             adb shell am start -n org.example.androidtunnel/.SettingsActivity
             for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do adb shell dumpsys window windows 2>/dev/null | grep -q "mCurrentFocus.*SettingsActivity" && break; sleep 2; done
@@ -179,7 +182,7 @@ jobs:
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1380 || true
             sleep 3
-            for i in 1 2 3 4 5 6; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/6)"; sleep 10; done
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
             adb exec-out screencap -p > artifacts/settings.png
             adb logcat -d > artifacts/logcat.txt || true
             ls -l artifacts/
@@ -192,3 +195,4 @@ jobs:
             src/app/build/outputs/apk/debug/*.apk
             src/app/build/reports/tests/**
             artifacts/*.png
+            artifacts/logcat.txt
