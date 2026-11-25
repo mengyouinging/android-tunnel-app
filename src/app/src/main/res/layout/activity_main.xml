@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" style="@style/NeuPage">
+    <LinearLayout style="@style/NeuContent" android:gravity="center_vertical" android:paddingTop="32dp" android:paddingBottom="32dp">
+        <TextView style="@style/NeuTitle" android:text="@string/main_brand" android:textSize="14sp" android:letterSpacing="0.14" android:gravity="center"/>
+        <TextView android:id="@+id/status" style="@style/NeuBody" android:background="@drawable/neu_raised" android:padding="28dp" android:minHeight="120dp" android:gravity="center" android:textSize="18sp"/>
+        <Switch android:id="@+id/service_switch" style="@style/NeuSwitch" android:text="@string/service_switch"/>
+        <Button android:id="@+id/battery_settings" style="@style/NeuButton" android:text="@string/battery_settings"/>
+        <Button android:id="@+id/open_status" style="@style/NeuButton" android:text="@string/open_status"/>
+        <Button android:id="@+id/open_settings" style="@style/NeuButton" android:text="@string/open_settings"/>
+    </LinearLayout>
+</ScrollView>
