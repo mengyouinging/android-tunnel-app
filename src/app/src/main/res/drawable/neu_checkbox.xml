@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true"><layer-list>
+        <item><shape><size android:width="32dp" android:height="32dp"/><corners android:radius="10dp"/><solid android:color="#AAB9CA"/></shape></item>
+        <item android:left="3dp" android:top="3dp" android:right="3dp" android:bottom="3dp"><shape><corners android:radius="8dp"/><gradient android:angle="315" android:startColor="#426C8A" android:endColor="#678CA7"/></shape></item>
+        <item android:drawable="@drawable/neu_checkbox_mark"/>
+    </layer-list></item>
+    <item><layer-list>
+        <item><shape><size android:width="32dp" android:height="32dp"/><corners android:radius="10dp"/><solid android:color="#F8FAFD"/></shape></item>
+        <item android:left="2dp" android:top="2dp" android:right="3dp" android:bottom="3dp"><shape><corners android:radius="8dp"/><solid android:color="#AAB9CA"/></shape></item>
+        <item android:left="4dp" android:top="4dp" android:right="3dp" android:bottom="3dp"><shape><corners android:radius="7dp"/><gradient android:angle="315" android:startColor="#D3DCE7" android:endColor="#E6ECF3"/></shape></item>
+    </layer-list></item>
+</selector>

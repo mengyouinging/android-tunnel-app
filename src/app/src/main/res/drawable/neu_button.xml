@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="#20426C8A">
+    <item><selector>
+        <item android:state_pressed="true" android:drawable="@drawable/neu_inset"/>
+        <item android:state_focused="true" android:drawable="@drawable/neu_inset_focused"/>
+        <item android:drawable="@drawable/neu_raised"/>
+    </selector></item>
+    <item android:id="@android:id/mask" android:left="6dp" android:top="6dp" android:right="6dp" android:bottom="6dp"><shape><corners android:radius="22dp"/><solid android:color="@color/neu_light"/></shape></item>
+</ripple>
