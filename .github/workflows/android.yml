@@ -139,6 +139,8 @@ jobs:
             # (com.android.settings ANR), not SystemUI — force-stop Settings
             # too so its dialog dies with its process, then re-check.
             adb shell am force-stop com.android.settings || true
+            # Run #40: settings shot blocked by "Pixel Launcher isn't responding" (nexuslauncher ANR).
+            adb shell am force-stop com.google.android.apps.nexuslauncher || true
             sleep 15
             # Run #21: screencap to /sdcard failed with
             # "Transport endpoint is not connected" (emulated sdcard not
@@ -156,9 +158,7 @@ jobs:
             adb shell dumpsys window windows | grep mCurrentFocus || true
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -i "not responding" || echo "NO ANR DIALOG FOUND"
-            adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1330 || true
             sleep 3
-            adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1380 || true
             sleep 3
             for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
             adb exec-out screencap -p > artifacts/main.png
@@ -167,9 +167,7 @@ jobs:
             adb shell dumpsys window windows | grep mCurrentFocus || true
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -i "not responding" || echo "NO ANR DIALOG FOUND"
-            adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1330 || true
             sleep 3
-            adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1380 || true
             sleep 3
             for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
             adb exec-out screencap -p > artifacts/status.png
@@ -178,9 +176,7 @@ jobs:
             adb shell dumpsys window windows | grep mCurrentFocus || true
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -i "not responding" || echo "NO ANR DIALOG FOUND"
-            adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1330 || true
             sleep 3
-            adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1380 || true
             sleep 3
             for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
             adb exec-out screencap -p > artifacts/settings.png
