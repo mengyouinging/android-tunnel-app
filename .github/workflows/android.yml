@@ -157,6 +157,7 @@ jobs:
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1380 || true
             sleep 3
+            for i in 1 2 3 4 5 6; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/6)"; sleep 10; done
             adb exec-out screencap -p > artifacts/main.png
             adb shell am start -n org.example.androidtunnel/.StatusActivity
             for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do adb shell dumpsys window windows 2>/dev/null | grep -q "mCurrentFocus.*StatusActivity" && break; sleep 2; done
@@ -167,6 +168,7 @@ jobs:
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1380 || true
             sleep 3
+            for i in 1 2 3 4 5 6; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/6)"; sleep 10; done
             adb exec-out screencap -p > artifacts/status.png
             adb shell am start -n org.example.androidtunnel/.SettingsActivity
             for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do adb shell dumpsys window windows 2>/dev/null | grep -q "mCurrentFocus.*SettingsActivity" && break; sleep 2; done
@@ -177,6 +179,7 @@ jobs:
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" && adb shell input tap 330 1380 || true
             sleep 3
+            for i in 1 2 3 4 5 6; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/6)"; sleep 10; done
             adb exec-out screencap -p > artifacts/settings.png
             adb logcat -d > artifacts/logcat.txt || true
             ls -l artifacts/
