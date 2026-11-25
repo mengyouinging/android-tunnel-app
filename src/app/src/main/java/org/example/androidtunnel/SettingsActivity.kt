@@ -2,13 +2,9 @@ package org.example.androidtunnel
 
 import android.app.Activity
 import android.os.Bundle
-import android.text.InputType
-import android.view.Gravity
-import android.widget.ScrollView
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
-import android.widget.LinearLayout
 import android.widget.TextView
 import org.example.androidtunnel.security.SecretStore
 import java.security.SecureRandom
@@ -16,36 +12,32 @@ import java.security.SecureRandom
 class SettingsActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_settings)
         val store = SecretStore(this)
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 28, 24, 24) }
-        box.addView(TextView(this).apply { text = "设置"; textSize = 22f })
-        val domain = field("域名，例如 example.com")
-        val token = field("Cloudflare API Token").apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
-        val port = field("监听端口（1024–65535）").apply { inputType = InputType.TYPE_CLASS_NUMBER }
-        val relay = field("EasyTier 自建中继 VPS host:port（待实机联调）")
-        val edge = field("Tunnel 优选边缘 IP（可选，待实机联调）")
-        val awgPrivate = secretField("AmneziaWG 本机私钥")
-        val peerPublic = field("AmneziaWG peer 公钥")
-        val peerEndpoint = field("AmneziaWG peer Endpoint host:port")
-        val allowedIps = field("AllowedIPs，例如 10.0.0.2/32")
-        val interfaceAddress = field("本机隧道 IPv6/CIDR（待与对端分配）")
-        val jitter = field("Jc,Jmin,Jmax（逗号分隔）").apply { setText("3,10,50") }
-        val uuid = secretField("VLESS UUID")
-        val realityPrivate = secretField("Reality 私钥")
-        val realityId = field("Reality Short ID")
-        val realityName = field("Reality ServerName")
-        val hysteriaPassword = secretField("Hysteria2 密码")
-        val hysteriaCert = field("Hysteria2 TLS 证书文件绝对路径")
-        val hysteriaKey = secretField("Hysteria2 TLS 私钥文件绝对路径")
-        val easyTierNetwork = field("EasyTier 网络名")
-        val easyTierSecret = secretField("EasyTier 网络密钥")
-        val probeHost = field("对端探测地址")
-        val probePort = field("对端探测端口").apply { inputType = InputType.TYPE_CLASS_NUMBER }
-        val cfTunnelToken = secretField("cloudflared Tunnel Token")
-        val wsRemote = field("wstunnel 管理通道 wss:// 地址")
-        listOf(domain, token, port, relay, edge, awgPrivate, peerPublic, peerEndpoint, allowedIps, interfaceAddress, jitter,
-            uuid, realityPrivate, realityId, realityName, hysteriaPassword, hysteriaCert, hysteriaKey, easyTierNetwork, easyTierSecret,
-            probeHost, probePort, cfTunnelToken, wsRemote).forEach(box::addView)
+        val domain = findViewById<EditText>(R.id.domain)
+        val token = findViewById<EditText>(R.id.token)
+        val port = findViewById<EditText>(R.id.port)
+        val relay = findViewById<EditText>(R.id.relay)
+        val edge = findViewById<EditText>(R.id.edge)
+        val awgPrivate = findViewById<EditText>(R.id.awg_private)
+        val peerPublic = findViewById<EditText>(R.id.peer_public)
+        val peerEndpoint = findViewById<EditText>(R.id.peer_endpoint)
+        val allowedIps = findViewById<EditText>(R.id.allowed_ips)
+        val interfaceAddress = findViewById<EditText>(R.id.interface_address)
+        val jitter = findViewById<EditText>(R.id.jitter).apply { setText("3,10,50") }
+        val uuid = findViewById<EditText>(R.id.uuid)
+        val realityPrivate = findViewById<EditText>(R.id.reality_private)
+        val realityId = findViewById<EditText>(R.id.reality_id)
+        val realityName = findViewById<EditText>(R.id.reality_name)
+        val hysteriaPassword = findViewById<EditText>(R.id.hysteria_password)
+        val hysteriaCert = findViewById<EditText>(R.id.hysteria_cert)
+        val hysteriaKey = findViewById<EditText>(R.id.hysteria_key)
+        val easyTierNetwork = findViewById<EditText>(R.id.easy_tier_network)
+        val easyTierSecret = findViewById<EditText>(R.id.easy_tier_secret)
+        val probeHost = findViewById<EditText>(R.id.probe_host)
+        val probePort = findViewById<EditText>(R.id.probe_port)
+        val cfTunnelToken = findViewById<EditText>(R.id.cf_tunnel_token)
+        val wsRemote = findViewById<EditText>(R.id.ws_remote)
         domain.setText(store.get("domain") ?: "")
         token.setText(store.get("token") ?: "")
         port.setText(store.get("port") ?: (20000 + SecureRandom().nextInt(40001)).toString())
@@ -70,14 +62,11 @@ class SettingsActivity : Activity() {
         cfTunnelToken.setText(store.get("cloudflared_token") ?: "")
         wsRemote.setText(store.get("wstunnel_remote") ?: "")
         jitter.setText(getSharedPreferences("private_config", MODE_PRIVATE).getString("jitter", "3,10,50"))
-        val autoStart = CheckBox(this).apply {
-            text = "开机后自动启动服务"
+        val autoStart = findViewById<CheckBox>(R.id.auto_start).apply {
             isChecked = getSharedPreferences("private_config", MODE_PRIVATE).getBoolean("autostart", false)
         }
-        box.addView(autoStart)
-        val result = TextView(this).apply { setPadding(0, 12, 0, 8) }
-        box.addView(Button(this).apply {
-            text = "测试 Token"
+        val result = findViewById<TextView>(R.id.result)
+        findViewById<Button>(R.id.test_token).apply {
             setOnClickListener {
                 val value = token.text.toString()
                 val host = domain.text.toString()
@@ -86,9 +75,8 @@ class SettingsActivity : Activity() {
                     runOnUiThread { result.text = message }
                 }.start()
             }
-        })
-        box.addView(Button(this).apply {
-            text = "保存配置"
+        }
+        findViewById<Button>(R.id.save_config).apply {
             setOnClickListener {
                 try {
                     val config = TunnelConfig(domain.text.toString(), token.text.toString(), port.text.toString().toInt(), relay.text.toString(), edge.text.toString())
@@ -130,15 +118,6 @@ class SettingsActivity : Activity() {
                     result.text = "已加密保存"
                 } catch (e: Exception) { result.text = e.message ?: "配置无效" }
             }
-        })
-        box.addView(result)
-        box.addView(TextView(this).apply {
-            text = "待实机联调：实际 Tunnel 边缘节点由 cloudflared 选择；当前版本不会将优选 IP 伪称为已使用节点或实测延迟。"
-            setPadding(0, 12, 0, 0)
-        })
-        box.gravity = Gravity.TOP
-        setContentView(ScrollView(this).apply { addView(box) })
+        }
     }
-    private fun field(hintText: String) = EditText(this).apply { hint = hintText; maxLines = 1; setSingleLine(true) }
-    private fun secretField(hintText: String) = field(hintText).apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD }
 }

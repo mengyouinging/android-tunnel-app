@@ -3,20 +3,14 @@ package org.example.androidtunnel
 import android.app.Activity
 import android.content.Context
 import android.os.Bundle
-import android.view.Gravity
-import android.widget.LinearLayout
 import android.widget.TextView
 
 class StatusActivity : Activity() {
     private lateinit var view: TextView
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        view = TextView(this).apply {
-            textSize = 18f
-            setPadding(28, 36, 28, 28)
-            gravity = Gravity.TOP
-        }
-        setContentView(view)
+        setContentView(R.layout.activity_status)
+        view = findViewById(R.id.status_detail)
     }
 
     override fun onResume() {
