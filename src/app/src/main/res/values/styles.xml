@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="AppTheme" parent="AppThemeBase" />
+    <style name="AppThemeBase" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowBackground">@color/neu_surface</item>
+        <item name="android:colorBackground">@color/neu_surface</item>
+        <item name="android:statusBarColor">@color/neu_surface</item>
+        <item name="android:navigationBarColor">@color/neu_surface</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:textColorPrimary">@color/neu_text</item>
+        <item name="android:textColorSecondary">@color/neu_secondary</item>
+        <item name="android:textColorHint">@color/neu_secondary</item>
+        <item name="android:colorAccent">@color/neu_accent</item>
+        <item name="android:colorControlActivated">@color/neu_accent</item>
+        <item name="android:colorControlNormal">@color/neu_secondary</item>
+        <item name="android:windowSoftInputMode">adjustResize</item>
+    </style>
+    <style name="NeuPage">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">match_parent</item>
+        <item name="android:background">@color/neu_surface</item>
+        <item name="android:fillViewport">true</item>
+        <item name="android:fitsSystemWindows">true</item>
+        <item name="android:clipToPadding">false</item>
+        <item name="android:scrollbarStyle">outsideOverlay</item>
+    </style>
+    <style name="NeuContent">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:padding">20dp</item>
+        <item name="android:clipChildren">false</item>
+        <item name="android:clipToPadding">false</item>
+    </style>
+    <style name="NeuCard">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">12dp</item>
+        <item name="android:orientation">vertical</item>
+        <item name="android:background">@drawable/neu_raised</item>
+        <item name="android:padding">22dp</item>
+    </style>
+    <style name="NeuTitle" parent="android:style/Widget.Material.TextView">
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">28sp</item>
+        <item name="android:textColor">@color/neu_text</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">16dp</item>
+        <item name="android:paddingBottom">24dp</item>
+        <item name="android:accessibilityHeading">true</item>
+    </style>
+    <style name="NeuBody" parent="android:style/Widget.Material.TextView">
+        <item name="android:saveEnabled">false</item>
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/neu_text</item>
+        <item name="android:lineSpacingExtra">6dp</item>
+    </style>
+    <style name="NeuLabel" parent="NeuBody">
+        <item name="android:textSize">13sp</item>
+        <item name="android:textColor">@color/neu_secondary</item>
+        <item name="android:paddingStart">10dp</item>
+        <item name="android:paddingEnd">10dp</item>
+        <item name="android:paddingTop">8dp</item>
+        <item name="android:paddingBottom">4dp</item>
+    </style>
+    <style name="NeuInput" parent="android:style/Widget.Material.EditText">
+        <item name="android:saveEnabled">false</item>
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginBottom">10dp</item>
+        <item name="android:minHeight">64dp</item>
+        <item name="android:background">@drawable/neu_input</item>
+        <item name="android:backgroundTint">@null</item>
+        <item name="android:paddingStart">20dp</item>
+        <item name="android:paddingEnd">20dp</item>
+        <item name="android:paddingTop">16dp</item>
+        <item name="android:paddingBottom">16dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/neu_text</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:singleLine">true</item>
+        <item name="android:inputType">text</item>
+        <item name="android:gravity">center_vertical</item>
+        <item name="android:scrollHorizontally">true</item>
+    </style>
+    <style name="NeuButton" parent="android:style/Widget.Material.Button">
+        <item name="android:saveEnabled">false</item>
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:minHeight">72dp</item>
+        <item name="android:minWidth">48dp</item>
+        <item name="android:background">@drawable/neu_button</item>
+        <item name="android:backgroundTint">@null</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="android:elevation">0dp</item>
+        <item name="android:paddingStart">24dp</item>
+        <item name="android:paddingEnd">24dp</item>
+        <item name="android:paddingTop">20dp</item>
+        <item name="android:paddingBottom">20dp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/neu_button_text</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+    <style name="NeuSwitch" parent="android:style/Widget.Material.CompoundButton.Switch">
+        <item name="android:saveEnabled">false</item>
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_marginTop">8dp</item>
+        <item name="android:minHeight">80dp</item>
+        <item name="android:padding">24dp</item>
+        <item name="android:background">@drawable/neu_button</item>
+        <item name="android:buttonTint">@null</item>
+        <item name="android:thumb">@drawable/neu_switch_thumb</item>
+        <item name="android:thumbTint">@null</item>
+        <item name="android:track">@drawable/neu_switch_track</item>
+        <item name="android:trackTint">@null</item>
+        <item name="android:splitTrack">false</item>
+        <item name="android:switchMinWidth">56dp</item>
+        <item name="android:switchPadding">16dp</item>
+        <item name="android:showText">false</item>
+        <item name="android:textSize">17sp</item>
+        <item name="android:textColor">@color/neu_text</item>
+        <item name="android:gravity">center_vertical</item>
+    </style>
+    <style name="NeuCheckBox" parent="android:style/Widget.Material.CompoundButton.CheckBox">
+        <item name="android:saveEnabled">false</item>
+        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:minHeight">64dp</item>
+        <item name="android:button">@drawable/neu_checkbox_button</item>
+        <item name="android:buttonTint">@null</item>
+        <item name="android:background">@drawable/neu_focus_ring</item>
+        <item name="android:paddingStart">8dp</item>
+        <item name="android:paddingEnd">8dp</item>
+        <item name="android:paddingTop">12dp</item>
+        <item name="android:paddingBottom">12dp</item>
+        <item name="android:drawablePadding">12dp</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:textColor">@color/neu_text</item>
+        <item name="android:gravity">center_vertical</item>
+    </style>
+</resources>
