@@ -1,11 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android" style="@style/NeuPage">
-    <LinearLayout style="@style/NeuContent" android:gravity="center_vertical" android:paddingTop="32dp" android:paddingBottom="32dp">
-        <TextView style="@style/NeuTitle" android:text="@string/main_brand" android:textSize="14sp" android:letterSpacing="0.14" android:gravity="center"/>
-        <TextView android:id="@+id/status" style="@style/NeuBody" android:background="@drawable/neu_raised" android:padding="28dp" android:minHeight="120dp" android:gravity="center" android:textSize="18sp"/>
-        <Switch android:id="@+id/service_switch" style="@style/NeuSwitch" android:text="@string/service_switch"/>
-        <Button android:id="@+id/battery_settings" style="@style/NeuButton" android:text="@string/battery_settings"/>
-        <Button android:id="@+id/open_status" style="@style/NeuButton" android:text="@string/open_status"/>
-        <Button android:id="@+id/open_settings" style="@style/NeuButton" android:text="@string/open_settings"/>
-    </LinearLayout>
-</ScrollView>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
+    android:background="@color/neu_surface"
+    android:padding="16dp">
+    <ToggleButton
+        android:id="@+id/service_switch"
+        android:layout_width="252dp"
+        android:layout_height="252dp"
+        android:layout_gravity="center"
+        android:background="@drawable/neu_power_selector"
+        android:backgroundTint="@null"
+        android:stateListAnimator="@null"
+        android:gravity="center"
+        android:paddingStart="28dp"
+        android:paddingEnd="28dp"
+        android:paddingTop="32dp"
+        android:paddingBottom="32dp"
+        android:drawableTop="@drawable/ic_power"
+        android:drawablePadding="18dp"
+        android:drawableTint="@color/neu_power_text"
+        android:textColor="@color/neu_power_text"
+        android:textSize="25sp"
+        android:textStyle="bold"
+        android:fontFamily="sans-serif-medium"
+        android:textAllCaps="false"
+        android:textOn="@string/service_on"
+        android:textOff="@string/service_off"
+        android:saveEnabled="false"
+        android:accessibilityLiveRegion="polite"/>
+    <ImageButton
+        android:id="@+id/menu_button"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="top|end"
+        android:contentDescription="@string/menu"
+        android:background="@drawable/neu_button"
+        android:backgroundTint="@null"
+        android:stateListAnimator="@null"
+        android:padding="12dp"
+        android:src="@drawable/ic_menu_more"
+        android:tint="@color/neu_text"/>
+</FrameLayout>
