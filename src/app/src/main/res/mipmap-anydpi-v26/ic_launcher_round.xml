@@ -1,0 +1,4 @@
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/neu_surface"/>
+    <foreground android:drawable="@drawable/ic_tunnel_foreground"/>
+</adaptive-icon>
