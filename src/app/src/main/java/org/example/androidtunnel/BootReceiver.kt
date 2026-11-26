@@ -6,9 +6,16 @@ import android.content.Intent
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED && context.getSharedPreferences("private_config", Context.MODE_PRIVATE).getBoolean("autostart", false)) {
-            // Autostart remains opt-in and is intentionally not enabled by default.
-            context.startForegroundService(Intent(context, TunnelService::class.java))
+        if (!StartupPolicy.shouldStartOnBoot(intent.action)) return
+        // Boot startup is always enabled. An old stored false must not disable it.
+        // The normal foreground-service bootstrap verifies root before doing any work.
+        runCatching { TunnelService.start(context, fromBoot = true) }.onFailure {
+            context.getSharedPreferences("tunnel_status", Context.MODE_PRIVATE).edit()
+                .putBoolean("running", false)
+                .putString("mode", TunnelMode.FAILED.name)
+                .putString("failure_code", "boot_blocked")
+                .putString("detail", "系统阻止开机自启动，请在系统设置中允许清连后台自启动")
+                .apply()
         }
     }
 }

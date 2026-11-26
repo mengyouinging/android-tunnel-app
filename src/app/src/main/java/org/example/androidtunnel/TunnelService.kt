@@ -9,272 +9,340 @@ import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
-import android.os.Build
+import android.net.LinkProperties
 import android.os.IBinder
 import android.os.PowerManager
-import org.example.androidtunnel.security.SecretStore
+import java.net.Inet6Address
+import java.io.File
+import java.security.SecureRandom
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
-import java.io.File
+import org.json.JSONObject
 
 class TunnelService : Service() {
-    private var wakeLock: PowerManager.WakeLock? = null
-    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private val worker = Executors.newSingleThreadScheduledExecutor()
-    @Volatile private var ddnsUpdater: DdnsUpdater? = null
-    private var ddnsScheduled = false
-    private var monitorScheduled = false
     private val prefs by lazy { getSharedPreferences("tunnel_status", Context.MODE_PRIVATE) }
+    private val runtime by lazy { File(filesDir, "runtime").apply { mkdirs() } }
+    private val journal by lazy { File(filesDir, "v2-nat-undo") }
+    private val manager by lazy { getSystemService(ConnectivityManager::class.java) }
+    private var callback: ConnectivityManager.NetworkCallback? = null
+    private var wakeLock: PowerManager.WakeLock? = null
+    @Volatile private var stopping = false
+    private val networkQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var scheduled = false
+    private var cleaned = false
+    private var rootAuthorized = false
+    private var bootOrigin = false
+    private var bootWaitCount = 0
+    private var directReady = false
+    private var cfStarted = false
+    private var lastNetwork: String? = null
+    @Volatile private var ipv6: String? = null
+    private var registeredIpv6: String? = null
+    private var attemptedEmptyRegistration = false
+    private var registration = "尚未登记"
+    private var directDetail = ""
+    private var probePassword = ""
+    private var lastCfProbeAt = 0L
+    private var cfProbeMs: Long? = null
+    @Volatile private var keys: LocalKeys? = null
+    private var settings: RelaySettings? = null
+    private var config: SharedConfig? = null
+    private var peerServer: PeerInfoServer? = null
 
     override fun onCreate() {
         super.onCreate()
-        createNotificationChannel()
-        startForeground(NOTIFICATION_ID, notification("正在检查组件"))
-        prefs.edit().putBoolean("running", true).apply()
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CHANNEL, "隧道服务", NotificationManager.IMPORTANCE_LOW))
+        getSystemService(NotificationManager::class.java).cancel(FAILURE_NOTIFICATION)
+        startForeground(NOTIFICATION, notification("启动中"))
+        prefs.edit().putBoolean("running", true).putString("mode", TunnelMode.STARTING.name)
+            .putString("detail", "正在检测 Root 权限").remove("failure_code").remove("ipv6").putBoolean("direct_ready", false)
+            .putBoolean("cf_connected", false).putLong("cf_probe", -1L).apply()
         wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AndroidTunnel:service").also {
-            it.setReferenceCounted(false)
-            it.acquire()
+            it.setReferenceCounted(false); it.acquire()
         }
-        registerNetworkChanges()
+        val listener = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) = signalNetwork()
+            override fun onLost(network: Network) = signalNetwork()
+            override fun onLinkPropertiesChanged(network: Network, properties: LinkProperties) = signalNetwork()
+        }
+        runCatching { manager.registerDefaultNetworkCallback(listener); callback = listener }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            stopComponents()
-            stopSelf()
+            stopping = true
+            worker.execute { cleanup(); stopSelf() }
             return START_NOT_STICKY
         }
-        startDdnsUpdater()
-        worker.execute {
-            startRuntime()
-            if (!monitorScheduled) {
-                monitorScheduled = true
-                worker.scheduleWithFixedDelay({ monitorLink() }, 20, 20, TimeUnit.SECONDS)
-            }
+        if (!scheduled) {
+            scheduled = true
+            bootOrigin = intent?.action == ACTION_BOOT_START || intent == null
+            worker.execute { bootstrap() }
+            worker.scheduleWithFixedDelay({ tickSafe() }, 10, 10, TimeUnit.SECONDS)
         }
         return START_STICKY
     }
-
+    override fun onBind(intent: Intent?): IBinder? = null
     override fun onDestroy() {
-        stopComponents()
-        runCatching { networkCallback?.let { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
-        networkCallback = null
-        worker.shutdownNow()
+        stopping = true
+        runCatching { callback?.let { manager.unregisterNetworkCallback(it) } }
+        callback = null
+        // Serialize cleanup behind any active startup or probe; do not race root operations.
+        runCatching { worker.execute { cleanup() } }
+        worker.shutdown()
         wakeLock?.let { if (it.isHeld) it.release() }
-        wakeLock = null
-        File(filesDir, "runtime").listFiles()?.forEach { it.delete() }
-        prefs.edit().putBoolean("running", false).putString("mode", TunnelMode.STOPPED.name)
-            .putString("detail", "服务已停止").putLong("latency", -1L).apply()
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
-
-    override fun onBind(intent: Intent?): IBinder? = null
-
-    private fun startRuntime() {
-        val installed = ComponentManager(this).prepare()
-        if (!installed.ready) {
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = installed.missing.joinToString("；") { "组件缺失：$it" }))
-            return
-        }
-        val peer = try { readPeerConfig() } catch (e: Exception) {
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = e.message ?: "服务配置无效"))
-            return
-        }
-        try { writeRuntimeConfigs(peer) } catch (e: Exception) {
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = "服务配置写入失败：${e.message ?: "未知错误"}"))
-            return
-        }
-        if (!RootController.hasRoot()) {
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = "未取得 root 授权"))
-            return
-        }
-        if (!RootController.installComponents(installed.files)) {
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = "组件已校验但无法复制到可执行目录"))
-            return
-        }
-        val binDir = File("/data/local/tmp/android-tunnel")
-        val runDir = File(filesDir, "runtime")
-        if (!RootController.startComponent("amneziawg-go", File(binDir, "amneziawg-go").absolutePath)) {
-            stopComponents()
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = "amneziawg-go 启动失败"))
-            return
-        }
-        if (!RootController.setupInterface(peer.interfaceAddress, peer.allowedIps)) {
-            stopComponents()
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = "接口配置失败；需要可用的 /dev/net/tun、ip 与 ip6tables"))
-            return
-        }
-        if (!RootController.configureAwg(File(runDir, "amneziawg-go.conf").absolutePath)) {
-            stopComponents()
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = "AmneziaWG 配置失败"))
-            return
-        }
-        if (
-            !RootController.startComponent("sing-box", File(binDir, "sing-box").absolutePath, File(runDir, "sing-box.json").absolutePath)) {
-            stopComponents()
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = "IPv6 主链路启动失败，已回滚已启动组件"))
-            return
-        }
-        val direct = TcpPeerProbe().probe(peer.probeHost, peer.probePort, PROBE_TIMEOUT_MS)
-        if (direct.answered) {
-            updateStatus(TunnelStatus(TunnelMode.DIRECT_IPV6, currentIpv6 = prefs.getString("ipv6", null),
-                peerLatencyMs = direct.latencyMs, detail = "主链路已启动并收到对端回应"))
-            return
-        }
-        RootController.stopComponent("amneziawg-go")
-        RootController.stopComponent("sing-box")
-        val easyTier = RootController.startComponent("easytier-core", File(binDir, "easytier-core").absolutePath, File(runDir, "easytier-core.args").absolutePath)
-        val fallback = if (easyTier) TcpPeerProbe().probe(peer.probeHost, peer.probePort, PROBE_TIMEOUT_MS) else ProbeResult(false, null)
-        if (fallback.answered) {
-            updateStatus(TunnelStatus(TunnelMode.FALLBACK, currentIpv6 = prefs.getString("ipv6", null),
-                peerLatencyMs = fallback.latencyMs, detail = "EasyTier 回退已收到对端回应"))
-            return
-        }
-        RootController.stopComponent("easytier-core")
-        val emergencyStarted = RootController.startComponent("cloudflared", File(binDir, "cloudflared").absolutePath, File(runDir, "cloudflared.conf").absolutePath) &&
-            RootController.startComponent("wstunnel", File(binDir, "wstunnel").absolutePath, File(runDir, "wstunnel.args").absolutePath)
-        if (!emergencyStarted) {
-            stopComponents()
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = "直连与 EasyTier 探测超时，应急管理通道启动失败"))
-        } else updateStatus(TunnelStatus(TunnelMode.EMERGENCY, detail = "cloudflared 与 wstunnel 管理通道进程已启动；peer 数据链路未确认，不显示延迟"))
+    private fun signalNetwork() {
+        if (!stopping && scheduled && networkQueued.compareAndSet(false, true)) runCatching {
+            worker.execute { networkQueued.set(false); tickSafe(networkEvent = true) }
+        }.onFailure { networkQueued.set(false) }
     }
 
-    private fun readPeerConfig(): PeerConfig {
-        val store = SecretStore(this)
-        val privatePrefs = getSharedPreferences("private_config", Context.MODE_PRIVATE)
-        val jitter = (privatePrefs.getString("jitter", "3,10,50") ?: "3,10,50").split(',').map { it.trim().toInt() }
-        require(jitter.size == 3) { "Jc/Jmin/Jmax 配置无效" }
-        val port = store.get("port")?.toIntOrNull() ?: 51820
-        return PeerConfig(
-            store.get("awg_private") ?: "", store.get("peer_public") ?: "", store.get("peer_endpoint") ?: "",
-            store.get("allowed_ips") ?: "", store.get("interface_address") ?: "", port, jitter[0], jitter[1], jitter[2], store.get("vless_uuid") ?: "",
-            store.get("reality_private") ?: "", store.get("reality_short_id") ?: "", store.get("reality_server_name") ?: "",
-            store.get("hysteria_password") ?: "", store.get("hysteria_cert_path") ?: "", store.get("hysteria_key_path") ?: "",
-            store.get("easytier_network") ?: "", store.get("easytier_secret") ?: "",
-            store.get("relay") ?: "", store.get("probe_host") ?: "", store.get("probe_port")?.toIntOrNull() ?: 0,
-            store.get("cloudflared_token") ?: "", store.get("wstunnel_remote") ?: ""
-        ).also(PeerConfig::validate)
+    private fun privateFile(name: String, data: String) {
+        val file = File(runtime, name)
+        file.writeText(data)
+        file.setReadable(false, false); file.setWritable(false, false); file.setExecutable(false, false)
+        file.setReadable(true, true); file.setWritable(true, true)
     }
 
-    private fun writeRuntimeConfigs(peer: PeerConfig) {
-        val dir = File(filesDir, "runtime").apply { mkdirs() }
-        fun write(name: String, value: String) {
-            val file = File(dir, name)
-            file.writeText(value, Charsets.UTF_8)
-            file.setReadable(false, false); file.setWritable(false, false); file.setExecutable(false, false)
-            file.setReadable(true, true); file.setWritable(true, true)
+    private fun bootstrap() {
+        if (stopping || config != null) return
+        // Foreground service notification must be posted immediately, but no network
+        // config fetch, key generation, component install or firewall changes precede root.
+        status(TunnelMode.STARTING, "正在检测 Root 权限")
+        rootAuthorized = RootController.hasRoot()
+        if (stopping) return
+        if (!rootAuthorized) {
+            failStartup("root_required", "未取得 Root 权限，清连无法启动")
+            return
         }
-        write("amneziawg-go.conf", ServiceConfigGenerator.amneziaWg(peer))
-        write("sing-box.json", ServiceConfigGenerator.singBox(peer))
-        write("easytier-core.args", ServiceConfigGenerator.easyTier(peer))
-        write("cloudflared.conf", SecretStore(this).get("cloudflared_token") ?: error("Tunnel Token 待配置"))
-        write("wstunnel.args", "client --remote ${peer.wstunnelRemote} tcp://127.0.0.1:22")
-        dir.listFiles()?.filter { it.name.endsWith(".conf") || it.name.endsWith(".json") || it.name.endsWith(".args") }?.forEach {
-            it.setReadable(false, false); it.setWritable(false, false); it.setReadable(true, true); it.setWritable(true, true)
+        try {
+            RelayRepository.purgeLegacy(this)
+            val selected = RelayRepository.settings(this)
+            if (selected.password.isBlank()) {
+                failStartup("password_required", "请先打开清连设置中转站口令")
+                return
+            }
+            selected.validate()
+            // A real boot can arrive before Wi-Fi/mobile data. Wait for the initial
+            // network rather than silently attempting a config request with no network.
+            // This is startup only; never repeat the relay handshake after establishment.
+            if (bootOrigin && manager.activeNetwork == null && bootWaitCount < 12) {
+                bootWaitCount++
+                status(TunnelMode.STARTING, "等待网络连接")
+                worker.schedule({ bootstrap() }, 15, TimeUnit.SECONDS)
+                return
+            }
+            status(TunnelMode.STARTING, "正在拉取共享配置并准备密钥")
+            val shared = RelayRepository.initial(this, selected)
+            if (stopping) return
+            val installed = ComponentManager(this).prepare()
+            require(installed.ready) { "组件校验失败：${installed.missing.joinToString("、")}" }
+            require(RootController.stopAll(journal)) { "上次出口规则清理失败，请检查系统防火墙" }
+            require(RootController.installComponents(installed.files)) { "组件无法复制到 root 执行目录" }
+            val local = KeyRepository.prepare(this, true)
+            probePassword = ByteArray(16).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
+            privateFile("amneziawg-go.conf", ServiceConfigGenerator.amneziaWg(shared, local.awgPrivate))
+            privateFile("sing-box.json", ServiceConfigGenerator.singBox(shared, probePassword))
+            settings = selected; keys = local
+            peerServer = PeerInfoServer(selected.password) {
+                JSONObject().put("ok", true).put("ipv6", ipv6.orEmpty()).put("port", V2.PORT)
+                    .put("pubkey", keys?.awgPublic.orEmpty())
+                    .put("reality_public_key", keys?.realityPublic.orEmpty())
+            }
+            config = shared
+            tickSafe()
+        } catch (e: Exception) {
+            if (!stopping) failStartup("startup_failed", safeError(e))
         }
     }
 
-    private fun stopComponents() {
-        runCatching { RootController.stopAllComponents() }
-    }
-
-    private fun monitorLink() {
-        if (!prefs.getBoolean("running", false)) return
-        val mode = runCatching { TunnelMode.valueOf(prefs.getString("mode", TunnelMode.FAILED.name)!!) }.getOrDefault(TunnelMode.FAILED)
-        if (mode !in setOf(TunnelMode.DIRECT_IPV6, TunnelMode.FALLBACK)) return
-        val peer = runCatching { readPeerConfig() }.getOrNull() ?: return
-        val result = TcpPeerProbe().probe(peer.probeHost, peer.probePort, PROBE_TIMEOUT_MS)
-        if (result.answered) {
-            updateStatus(TunnelStatus(mode, currentIpv6 = prefs.getString("ipv6", null), peerLatencyMs = result.latencyMs,
-                detail = if (mode == TunnelMode.DIRECT_IPV6) "周期探测收到对端回应" else "EasyTier 回退周期探测收到对端回应"))
-        } else {
-            updateStatus(TunnelStatus(TunnelMode.FAILED, detail = "对端探测超时；正在重新选择链路"))
-            stopComponents()
-            startRuntime()
+    private fun failStartup(code: String, detail: String) {
+        stopping = true
+        cleanup(code, detail)
+        // Keep the failure visible even if no Activity is open (e.g. boot).
+        // Android may suppress notifications if permission has not been granted.
+        val visible = when (code) {
+            "root_required" -> getString(R.string.root_required_title)
+            "password_required" -> getString(R.string.service_password_required)
+            else -> getString(R.string.service_failed)
         }
+        runCatching {
+            getSystemService(NotificationManager::class.java)
+                .notify(FAILURE_NOTIFICATION, notification(visible, ongoing = false))
+        }
+        stopSelf()
     }
 
-    private fun registerNetworkChanges() {
-        val manager = getSystemService(ConnectivityManager::class.java)
-        val callback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) {
-                if (prefs.getBoolean("running", false)) {
-                    runDdnsCheck()
-                    worker.execute { stopComponents(); startRuntime() }
+    private fun safeError(e: Exception): String = if (e is RelayException) "中转站：${e.message}"
+        else if (e is IllegalArgumentException || e is IllegalStateException) {
+            // Only display deliberately authored messages. Never echo arbitrary exception strings.
+            e.message?.takeIf { it.any { c -> c in '\u4e00'..'\u9fff' } && it.length < 140 }
+                ?: "配置、密钥或系统环境无效"
+        } else "网络或系统操作失败"
+
+    private fun tickSafe(networkEvent: Boolean = false) {
+        if (stopping || config == null) return
+        try { tick(networkEvent) }
+        catch (e: Exception) { status(TunnelMode.FAILED, safeError(e)) }
+    }
+    private fun tick(networkEvent: Boolean) {
+        val shared = config ?: return
+        val local = keys ?: return
+        val selected = settings ?: return
+        val network = manager.activeNetwork
+        val lp = network?.let { manager.getLinkProperties(it) }
+        val iface = lp?.interfaceName
+        val newIp = lp?.linkAddresses?.mapNotNull {
+            (it.address as? Inet6Address)?.hostAddress?.substringBefore('%')
+        }?.filter(V2::globalIpv6)?.sorted()?.let { candidates ->
+            ipv6?.takeIf { it in candidates } ?: candidates.firstOrNull()
+        }
+        val signature = "$network|$iface|$newIp|${lp?.routes?.joinToString()}"
+        val changed = signature != lastNetwork
+        ipv6 = newIp
+
+        // Cloudflare is a continuously running second entry, not a last-resort SSH channel.
+        // Network changes never stop it unless its own process has actually failed.
+        if (stopping) return
+        ensureCloudflare(shared)
+
+        if (changed || !directReady || !RootController.alive("amneziawg-go")) {
+            lastNetwork = signature
+            // Keep the AWG process/key and existing session on address change when possible.
+            if (!RootController.alive("amneziawg-go")) {
+                RootController.cleanupInterface()
+                directReady = false
+                try {
+                    require(RootController.startComponent("amneziawg-go") && RootController.configureAwg()) { "IPv6 监听组件未就绪" }
+                } catch (e: Exception) {
+                    runCatching { RootController.stopComponent("amneziawg-go") }
+                    directDetail = safeError(e)
                 }
             }
-            override fun onLost(network: Network) {
-                if (prefs.getBoolean("running", false)) worker.execute { stopComponents(); startRuntime() }
+            if (RootController.alive("amneziawg-go")) {
+                directReady = false
+                try {
+                    require(RootController.cleanupNat(journal)) { "旧出口规则清理失败" }
+                    if (iface == null) {
+                        directDetail = "当前没有上网接口"
+                    } else {
+                        RootController.setupInterface(shared)
+                        val warnings = RootController.setupNat(shared, iface, journal)
+                        directReady = true
+                        directDetail = if (warnings.isEmpty()) "双栈出口规则已安装" else warnings.joinToString("；")
+                    }
+                } catch (e: Exception) { directDetail = safeError(e) }
             }
         }
-        runCatching { manager.registerDefaultNetworkCallback(callback); networkCallback = callback }
-    }
-
-    private fun startDdnsUpdater() {
-        if (ddnsScheduled) return
-        ddnsScheduled = true
-        runDdnsCheck()
-        worker.scheduleWithFixedDelay({ runDdnsCheck() }, 5, 5, TimeUnit.MINUTES)
-    }
-
-    private fun runDdnsCheck() {
-        worker.execute {
+        // Initial registration and address-change registration only. No recurring /config
+        // handshake or unchanged-address writes. Failed registration is retried.
+        if (newIp == null) {
+            registeredIpv6 = null
+            if (!attemptedEmptyRegistration && RootController.alive("amneziawg-go")) {
+                attemptedEmptyRegistration = true
+                registration = try {
+                    RelayClient(selected).register("", local.awgPublic)
+                    "无公网 IPv6；已提交空地址登记"
+                } catch (_: Exception) { "无公网 IPv6；中转站未确认清除地址，请从保底入口读取" }
+            }
+        } else if (registeredIpv6 != newIp && RootController.alive("amneziawg-go")) {
+            attemptedEmptyRegistration = false
             try {
-                val store = SecretStore(this)
-                val token = store.get("token") ?: return@execute
-                val domain = store.get("domain") ?: return@execute
-                val updater = ddnsUpdater ?: synchronized(this) {
-                    ddnsUpdater ?: DdnsUpdater(CloudflareClient(), SystemIpv6AddressProvider(), token, domain).also { ddnsUpdater = it }
-                }
-                val result = updater.refresh()
-                if (result != null) {
-                    val mode = runCatching { TunnelMode.valueOf(prefs.getString("mode", TunnelMode.FAILED.name)!!) }.getOrDefault(TunnelMode.FAILED)
-                    val latency = prefs.getLong("latency", -1L).takeIf { it >= 0 }
-                    updateStatus(TunnelStatus(mode, currentIpv6 = result.content, peerLatencyMs = latency, detail = "Cloudflare AAAA 已更新"))
-                }
-            } catch (e: Exception) {
-                val mode = runCatching { TunnelMode.valueOf(prefs.getString("mode", TunnelMode.FAILED.name)!!) }.getOrDefault(TunnelMode.FAILED)
-                updateStatus(TunnelStatus(mode, currentIpv6 = prefs.getString("ipv6", null),
-                    peerLatencyMs = prefs.getLong("latency", -1L).takeIf { it >= 0 }, detail = "DDNS 更新失败：${e.message ?: "未知错误"}"))
+                RelayClient(selected).register(newIp, local.awgPublic)
+                registeredIpv6 = newIp
+                registration = "公网 IPv6 已登记"
+            } catch (e: Exception) { registration = "地址登记失败：${safeError(e)}；将重试" }
+        }
+        if (stopping) return
+        val now = System.currentTimeMillis()
+        val connectorReady = cfStarted && ExitProbe.connectorReady()
+        if (!connectorReady) cfProbeMs = null
+        if (connectorReady && (changed || now - lastCfProbeAt >= 30000)) {
+            lastCfProbeAt = now
+            cfProbeMs = ExitProbe.fallback(probePassword)
+        }
+        val direct = directReady && newIp != null &&
+            TunnelStateMachine.freshHandshake(RootController.lastHandshake(), now / 1000)
+        val fallback = connectorReady && cfProbeMs != null
+        val mode = TunnelStateMachine.select(direct, fallback, directReady || cfStarted)
+        val keyNote = if (shared.phonePublicKey.isNotBlank() && shared.phonePublicKey != local.awgPublic)
+            "；控制端需采用登记的新手机公钥" else ""
+        val cfDetail = if (fallback) "保底公网出口自测通过" else if (connectorReady) "保底已连接，出口尚未验证" else "保底连接中"
+        status(mode, "$registration；$directDetail；$cfDetail$keyNote", direct, connectorReady, cfProbeMs)
+    }
+
+    private fun ensureCloudflare(shared: SharedConfig) {
+        if (!RootController.alive("sing-box")) {
+            runCatching { RootController.stopComponent("cloudflared") }
+            cfStarted = false
+            cfProbeMs = null
+            if (!RootController.startComponent("sing-box")) return
+        }
+        if (!RootController.alive("cloudflared")) {
+            cfProbeMs = null
+            lastCfProbeAt = 0L
+            // Token is only held in this service's memory and a transient private token file.
+            // It is never persisted in settings or included in logs/status.
+            privateFile("cloudflared.conf", shared.tunnelToken)
+            cfStarted = RootController.startComponent("cloudflared")
+        } else cfStarted = true
+        if (cfStarted && ExitProbe.connectorReady()) File(runtime, "cloudflared.conf").delete()
+    }
+
+    private fun cleanup(failureCode: String? = null, failureDetail: String? = null) {
+        if (cleaned) return
+        cleaned = true
+        runCatching { peerServer?.close() }; peerServer = null
+        // If root was denied, do not run additional su commands or erase old
+        // process/NAT cleanup journals that require root for safe recovery.
+        val clean = !rootAuthorized || runCatching { RootController.stopAll(journal) }.getOrDefault(false)
+        if (rootAuthorized && clean) runtime.listFiles()?.forEach { it.delete() }
+        settings = null; keys = null; config = null; probePassword = ""; cfProbeMs = null
+        prefs.edit().putBoolean("running", false)
+            .putString("mode", if (failureCode == null) TunnelMode.STOPPED.name else TunnelMode.FAILED.name)
+            .putString("failure_code", failureCode)
+            .putString("detail", failureDetail ?: if (clean) "服务已停止" else "服务已停止，出口规则清理需检查")
+            .remove("ipv6").putBoolean("direct_ready", false).putBoolean("cf_connected", false)
+            .putLong("cf_probe", -1L).apply()
+    }
+
+    private fun status(mode: TunnelMode, detail: String, direct: Boolean = false,
+                       cf: Boolean = false, latency: Long? = null) {
+        prefs.edit().putString("mode", mode.name).putString("detail", detail).putString("ipv6", ipv6)
+            .putString("registration", registration).putBoolean("direct_ready", direct)
+            .putBoolean("cf_connected", cf).putLong("cf_probe", latency ?: -1L).apply()
+        if (!stopping) {
+            val visible = when (mode) {
+                TunnelMode.STOPPED -> "已关闭"
+                TunnelMode.STARTING -> "启动中"
+                TunnelMode.DIRECT_IPV6, TunnelMode.FALLBACK -> "已开启"
+                TunnelMode.WAITING -> "连接中"
+                TunnelMode.FAILED -> "启动失败"
             }
+            getSystemService(NotificationManager::class.java).notify(NOTIFICATION, notification(visible))
         }
     }
-
-    private fun updateStatus(status: TunnelStatus) {
-        prefs.edit().putString("mode", status.mode.name).putString("detail", status.detail)
-            .putString("ipv6", status.currentIpv6).putLong("latency", status.peerLatencyMs ?: -1L).apply()
-        val content = buildString {
-            append(status.mode.displayMode())
-            if (status.currentIpv6 != null) append(" · ").append(status.currentIpv6)
-            if (status.peerLatencyMs != null) append(" · ").append(status.peerLatencyMs).append(" ms")
-            if (status.detail.isNotBlank()) append(" · ").append(status.detail)
-        }
-        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID, notification(content))
+    private fun notification(text: String, ongoing: Boolean = true): Notification {
+        val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        return Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_tunnel_notification)
+            .setContentTitle(getString(R.string.app_name)).setContentText(text).setStyle(Notification.BigTextStyle().bigText(text))
+            .setContentIntent(open).setOngoing(ongoing).setAutoCancel(!ongoing).build()
     }
-
-    private fun notification(content: String): Notification {
-        val openApp = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val builder = Notification.Builder(this, CHANNEL_ID)
-        return builder.setContentTitle("Android Tunnel").setContentText(content).setStyle(Notification.BigTextStyle().bigText(content))
-            .setSmallIcon(android.R.drawable.stat_sys_warning).setContentIntent(openApp).setOngoing(true).build()
-    }
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= 26) getSystemService(NotificationManager::class.java)
-            .createNotificationChannel(NotificationChannel(CHANNEL_ID, "隧道服务", NotificationManager.IMPORTANCE_LOW))
-    }
-
     companion object {
         const val ACTION_START = "org.example.androidtunnel.START"
         const val ACTION_STOP = "org.example.androidtunnel.STOP"
-        private const val CHANNEL_ID = "tunnel"
-        private const val NOTIFICATION_ID = 1
-        private const val PROBE_TIMEOUT_MS = 2500
-
-        fun start(context: Context) {
-            val intent = Intent(context, TunnelService::class.java).setAction(ACTION_START)
-            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent) else context.startService(intent)
+        const val ACTION_BOOT_START = "org.example.androidtunnel.BOOT_START"
+        private const val CHANNEL = "tunnel"
+        private const val NOTIFICATION = 1
+        private const val FAILURE_NOTIFICATION = 2
+        fun start(context: Context, fromBoot: Boolean = false) {
+            context.startForegroundService(Intent(context, TunnelService::class.java)
+                .setAction(if (fromBoot) ACTION_BOOT_START else ACTION_START))
         }
         fun stop(context: Context) { context.startService(Intent(context, TunnelService::class.java).setAction(ACTION_STOP)) }
     }
