@@ -35,7 +35,7 @@ object V2 {
         require(parts.size == 2 && parts[0].matches(Regex("[0-9A-Fa-f:.]+")) &&
             (parts[0].contains(':') || parts[0].matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+")))) { "地址分配格式无效" }
         val ip = InetAddress.getByName(parts[0])
-        val bits = parts[1].toIntOrNull() ?: error("CIDR 前缀无效")
+        val bits = parts[1].toIntOrNull() ?: throw IllegalArgumentException("CIDR 前缀无效")
         require(bits in 1..(ip.address.size * 8)) { "禁止默认路由或非法 CIDR" }
         return value.trim()
     }
