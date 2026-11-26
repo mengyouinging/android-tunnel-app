@@ -1,0 +1,195 @@
+name: Android build and emulator smoke test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fetch-upstream:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.1'
+          check-latest: false
+          cache: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      # setup-android@v3 fails: it runs `sdkmanager tools`, a package removed
+      # from the SDK repo (exit 1). The ubuntu runner already ships an SDK.
+      - name: Use preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/lib/android/sdk/platform-tools" >> "$GITHUB_PATH"
+      - name: Test checksum verification failures
+        run: python3 src/scripts/test-verify-upstream.py
+      - name: Install pinned NDK
+        run: sdkmanager 'ndk;27.2.12479018'
+      - name: Fetch tagged sources, build and verify all six components
+        run: |
+          set -euo pipefail
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/27.2.12479018"
+          mkdir -p artifacts
+          bash src/scripts/fetch-upstream.sh 2>&1 | tee artifacts/fetch-upstream.log
+      - name: Record all six checksum results
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          bash src/scripts/verify-upstream.sh | tee artifacts/upstream-verification.tsv
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-upstream-arm64
+          path: src/app/src/main/assets/arm64/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upstream-verification
+          path: artifacts/
+          if-no-files-found: error
+
+  android:
+    needs: fetch-upstream
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      # setup-android@v3 fails: it runs `sdkmanager tools`, a package removed
+      # from the SDK repo (exit 1). The ubuntu runner already ships an SDK.
+      - name: Use preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=/usr/local/lib/android/sdk" >> "$GITHUB_ENV"
+          echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "/usr/local/lib/android/sdk/platform-tools" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-upstream-arm64
+          path: src/app/src/main/assets/arm64/
+      - name: Verify transferred components before packaging
+        run: bash src/scripts/verify-upstream.sh
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+      - name: Accept SDK licenses and install platform
+        run: |
+          # sdkmanager may close stdin while yes is still writing (SIGPIPE).
+          # Keep sdkmanager's exit status, without failing on yes's status.
+          set +o pipefail
+          yes | sdkmanager --licenses
+          set -o pipefail
+          sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'emulator'
+      # build6 workflow omitted this step; without a keystore, the release
+      # signing config has no storeFile and :app:packageRelease fails with NPE.
+      # Same dev-keystore approach as the build5 workflow (CI only).
+      - name: Generate development keystore (CI only, not a release key)
+        env:
+          ANDROID_TUNNEL_KEYSTORE: ${{ github.workspace }}/src/android-tunnel-dev.jks
+          ANDROID_TUNNEL_STORE_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_ALIAS: android-tunnel-dev
+        run: bash src/scripts/generate-dev-keystore.sh
+      - name: Unit tests and release build
+        env:
+          ANDROID_TUNNEL_KEYSTORE: ${{ github.workspace }}/src/android-tunnel-dev.jks
+          ANDROID_TUNNEL_STORE_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_PASSWORD: android-tunnel-dev
+          ANDROID_TUNNEL_KEY_ALIAS: android-tunnel-dev
+        run: |
+          cd src
+          gradle testReleaseUnitTest assembleRelease assembleDebug --stacktrace
+      # Run #20 failed here: GitHub runners have no KVM, so the emulator
+      # refuses software CPU emulation unless ANDROID_I_WANT_MY_TCG=yes.
+      # TCG is slow, so give boot 1200s and keep the emulator light.
+      - name: Emulator install, launch, and capture screens
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          ANDROID_I_WANT_MY_TCG: 'yes'
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-boot-timeout: 1200
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: |
+            adb install -r src/app/build/outputs/apk/debug/app-debug.apk || (sleep 10 && adb install -r src/app/build/outputs/apk/debug/app-debug.apk)
+            # Run #39: MainActivity was blocked by the notification permission dialog (not an ANR).
+            # Grant it up front so the dialog never appears.
+            adb shell pm grant org.example.androidtunnel android.permission.POST_NOTIFICATIONS || true
+            # Run #29: taps cannot dismiss a System UI ANR dialog — it lives in
+            # the ANR'd SystemUI process, whose UI thread never handles the tap.
+            # Restart SystemUI so the dialog dies with its process.
+            adb shell am force-stop com.android.systemui || true
+            # Run #30: the visible dialog was "Settings isn't responding"
+            # (com.android.settings ANR), not SystemUI — force-stop Settings
+            # too so its dialog dies with its process, then re-check.
+            adb shell am force-stop com.android.settings || true
+            # Run #40: settings shot blocked by "Pixel Launcher isn't responding" (nexuslauncher ANR).
+            adb shell am force-stop com.google.android.apps.nexuslauncher || true
+            sleep 15
+            # Run #21: screencap to /sdcard failed with
+            # "Transport endpoint is not connected" (emulated sdcard not
+            # ready right after boot). Stream the PNG straight to the host
+            # with exec-out instead; no /sdcard involved.
+            # Run #24 lesson: the emulator-runner executes every script line as a
+            # separate `sh -c`, so multi-line for loops are a syntax error.
+            # Every wait loop below is a single line. Run #23 proved the old
+            # sleeps were too short on TCG: main.png caught the launcher and
+            # settings.png duplicated the status screen, so wait for each
+            # activity to actually become the focused window before shooting.
+            mkdir -p artifacts
+            adb shell am start -n org.example.androidtunnel/.MainActivity
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30; do adb shell dumpsys window windows 2>/dev/null | grep -q "mCurrentFocus.*MainActivity" && break; sleep 2; done
+            adb shell dumpsys window windows | grep mCurrentFocus || true
+            sleep 3
+            adb shell dumpsys window windows 2>/dev/null | grep -i "not responding" || echo "NO ANR DIALOG FOUND"
+            sleep 3
+            sleep 3
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
+            adb exec-out screencap -p > artifacts/main.png
+            # V2: StatusActivity and SettingsActivity were deleted. The app is
+            # now a single MainActivity (big switch + top-right menu). Capture
+            # the overflow menu and the password dialog instead of the removed screens.
+            adb shell input keyevent 82
+            sleep 3
+            adb shell dumpsys window windows 2>/dev/null | grep -i "not responding" || echo "NO ANR DIALOG FOUND"
+            sleep 3
+            sleep 3
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
+            adb exec-out screencap -p > artifacts/menu.png
+            # Tap the first overflow-menu item (password) on the 1080x1920 Pixel 2.
+            # If the tap misses, the shot just shows the menu again - harmless.
+            adb shell input tap 865 270
+            sleep 3
+            adb shell dumpsys window windows 2>/dev/null | grep -i "not responding" || echo "NO ANR DIALOG FOUND"
+            sleep 3
+            sleep 3
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
+            adb exec-out screencap -p > artifacts/password.png
+            adb logcat -d > artifacts/logcat.txt || true
+            ls -l artifacts/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-build-and-ui
+          path: |
+            src/app/build/outputs/apk/release/*.apk
+            src/app/build/outputs/apk/debug/*.apk
+            src/app/build/reports/tests/**
+            artifacts/*.png
+            artifacts/logcat.txt
