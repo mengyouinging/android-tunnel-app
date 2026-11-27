@@ -1,4 +1,5 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@+id/menu_password" android:title="@string/menu_password"/>
     <item android:id="@+id/menu_update" android:title="@string/menu_update"/>
+    <item android:id="@+id/menu_diagnostics" android:title="@string/menu_diagnostics"/>
 </menu>

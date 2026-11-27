@@ -14,4 +14,5 @@
     <string name="root_required_title">需要 Root 权限</string>
     <string name="root_required_message">清连必须取得 Root 权限才能运行。请在 Magisk 或其他 Root 管理器中授权清连，再点击开关重试。</string>
     <string name="service_password_required">需设置口令</string>
+    <string name="menu_diagnostics">导出诊断信息</string>
 </resources>

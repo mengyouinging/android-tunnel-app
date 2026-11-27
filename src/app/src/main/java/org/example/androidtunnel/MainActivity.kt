@@ -60,6 +60,7 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
                     when (item.itemId) {
                         R.id.menu_password -> { showPassword(startAfterSave = false); true }
                         R.id.menu_update -> { UpdateClient.checkNow(this@MainActivity); true }
+                        R.id.menu_diagnostics -> { exportDiagnostics(); true }
                         else -> false
                     }
                 }
@@ -348,6 +349,26 @@ class MainActivity : Activity(), SharedPreferences.OnSharedPreferenceChangeListe
             if (!passwordBusy) toast("配置拉取失败，请检查口令或网络")
         }
     }
+    private fun exportDiagnostics() {
+        if (Build.VERSION.SDK_INT <= 28 &&
+            checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.WRITE_EXTERNAL_STORAGE), 42)
+            return
+        }
+        toast("正在生成诊断信息")
+        DiagnosticsExporter.export(this) { message ->
+            if (!isFinishing && !isDestroyed) Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 42) {
+            if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) exportDiagnostics()
+            else toast("未授予存储权限，无法保存到 Download")
+        }
+    }
+
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     companion object {
         private val startupChecked = AtomicBoolean(false)

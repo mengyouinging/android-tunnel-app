@@ -14,13 +14,13 @@ object RootController {
     private val components = ComponentAssets.names.toSet()
     private val ifacePattern = Regex("[A-Za-z0-9_.-]{1,15}")
     
-    private fun exec(command: String, stdin: String? = null): Result {
+    private fun exec(command: String, stdin: String? = null, timeoutSeconds: Long = 12): Result {
         val process = ProcessBuilder("su", "-c", command).redirectErrorStream(true).start()
         val reader = FutureTask { process.inputStream.bufferedReader().use { it.readText().take(65536) } }
         Thread(reader, "root-output").apply { isDaemon = true }.start()
         try {
             process.outputStream.use { if (stdin != null) it.write(stdin.toByteArray(Charsets.UTF_8)) }
-            if (!process.waitFor(12, TimeUnit.SECONDS)) {
+            if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
                 process.destroyForcibly()
                 error("root 命令超时")
             }
@@ -34,6 +34,70 @@ object RootController {
         return exec(script)
     }
     fun hasRoot() = runCatching { run("id -u").let { StartupPolicy.rootGranted(it.exitCode, it.output) } }.getOrDefault(false)
+
+    // Read-only diagnostics. Each method builds commands only from the fixed component allowlist.
+    fun diagnosticRootUid(): Result = exec("id -u")
+
+    fun diagnosticComponent(name: String): Result {
+        require(name in components)
+        val asset = "$ASSETS/$name"
+        val installed = "$BIN/$name"
+        val command = """
+            printf 'asset_exists='; test -f $asset && echo yes || echo no
+            printf 'installed_exists='; test -f $installed && echo yes || echo no
+            printf 'installed_executable='; test -x $installed && echo yes || echo no
+            printf 'asset_size='; if test -f $asset; then stat -c %s $asset 2>/dev/null || echo unavailable; else echo unavailable; fi
+            printf 'installed_size='; if test -f $installed; then stat -c %s $installed 2>/dev/null || echo unavailable; else echo unavailable; fi
+            printf 'asset_sha256='; if test -f $asset; then sha256sum $asset 2>/dev/null | cut -d ' ' -f 1; else echo unavailable; fi
+            printf 'installed_sha256='; if test -f $installed; then sha256sum $installed 2>/dev/null | cut -d ' ' -f 1; else echo unavailable; fi
+        """.trimIndent().replace("\n", "; ")
+        return exec(command)
+    }
+
+    fun diagnosticProcess(name: String): Result {
+        require(name in active)
+        val pidFile = "$RUNTIME/$name.pid"
+        val binary = "$BIN/$name"
+        val command = """
+            printf 'pid_file_exists='; test -f $pidFile && echo yes || echo no
+            if test -s $pidFile; then
+              p=${'$'}(cat $pidFile); printf 'pid='; echo "${'$'}p"
+              case "${'$'}p" in ''|*[!0-9]*) echo 'pid_valid=no';;
+                *) echo 'pid_valid=yes'; printf 'kill_0='; kill -0 "${'$'}p" 2>/dev/null && echo alive || echo dead
+                   actual_exe=${'$'}(readlink "/proc/${'$'}p/exe" 2>/dev/null)
+                   printf 'proc_exe='; echo "${'$'}{actual_exe:-unavailable}"
+                   printf 'expected_exe='; echo $binary
+                   if test "${'$'}actual_exe" = $binary; then echo 'exe_matches_expected=yes'; else echo 'exe_matches_expected=no'; fi
+                   printf 'cmdline='; tr '\000' ' ' < "/proc/${'$'}p/cmdline" 2>/dev/null || echo unavailable; echo
+              esac
+            else
+              echo 'pid=unavailable'; echo 'pid_valid=no'; echo 'kill_0=unavailable'
+              echo 'proc_exe=unavailable'; echo 'expected_exe=$binary'; echo 'cmdline=unavailable'
+            fi
+        """.trimIndent().replace("\n", "; ")
+        return exec(command)
+    }
+
+    fun diagnosticSmoke(name: String): Result {
+        require(name in components)
+        return exec("timeout 5s $BIN/$name --help", timeoutSeconds = 8)
+    }
+
+    fun diagnosticTun(): Result = exec("""
+        printf '%s\n' 'ls -l /dev/net/tun:'
+        ls -l /dev/net/tun 2>&1
+        printf 'test_c='; test -c /dev/net/tun && echo yes || echo no
+        printf '%s\n' 'ip link show awg0:'
+        ip link show awg0 2>&1
+    """.trimIndent().replace("\n", "; "))
+
+    fun diagnosticRoutes(): Result = exec("""
+        printf '%s\n' 'IPv6 default route:'
+        ip -6 route show default 2>&1
+        printf '%s\n' 'IPv4 default route:'
+        ip -4 route show default 2>&1
+    """.trimIndent().replace("\n", "; "))
+
     private fun ok(command: String) = exec(command).exitCode == 0
     private fun check(command: String, message: String) { require(ok(command)) { message } }
 
@@ -65,17 +129,17 @@ object RootController {
         }
         // PID files contain no credentials. Foreground mode keeps the tracked PID alive.
         val pid = "$RUNTIME/$name.pid"
-        return ok("nohup $BIN/$name $args >/dev/null 2>&1 </dev/null & echo \$! > $pid; sleep 1; kill -0 \$(cat $pid)")
+        return ok("nohup $BIN/$name $args >/dev/null 2>&1 </dev/null & echo \$! > $pid; sleep 1; kill -0 ${'$'}(cat $pid)")
     }
     fun alive(name: String): Boolean {
         require(name in active)
         val pid = "$RUNTIME/$name.pid"
-        return ok("test -s $pid && p=\$(cat $pid) && test \"\$(readlink /proc/\$p/exe)\" = $BIN/$name && kill -0 \$p")
+        return ok("test -s $pid && p=${'$'}(cat $pid) && test \"${'$'}(readlink /proc/\$p/exe)\" = $BIN/$name && kill -0 \$p")
     }
     fun stopComponent(name: String) {
         require(name in components)
         val pid = "$RUNTIME/$name.pid"
-        exec("if test -s $pid; then p=\$(cat $pid); case \"\$p\" in ''|*[!0-9]*) exit 1;; esac; if test \"\$(readlink /proc/\$p/exe)\" = $BIN/$name; then kill -TERM \$p; fi; rm -f $pid; fi")
+        exec("if test -s $pid; then p=${'$'}(cat $pid); case \"\$p\" in ''|*[!0-9]*) exit 1;; esac; if test \"${'$'}(readlink /proc/\$p/exe)\" = $BIN/$name; then kill -TERM \$p; fi; rm -f $pid; fi")
     }
     fun configureAwg(): Boolean = ok("$BIN/awg setconf awg0 $RUNTIME/amneziawg-go.conf")
     fun lastHandshake(): Long {
