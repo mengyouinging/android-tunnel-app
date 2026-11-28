@@ -57,7 +57,7 @@ class TunnelService : Service() {
         getSystemService(NotificationManager::class.java).cancel(FAILURE_NOTIFICATION)
         startForeground(NOTIFICATION, notification("启动中"))
         prefs.edit().putBoolean("running", true).putString("mode", TunnelMode.STARTING.name)
-            .putString("detail", "正在检测 Root 权限").remove("failure_code").remove("ipv6").putBoolean("direct_ready", false)
+            .putString("detail", "正在检测 Root 权限").remove("failure_code").remove("failure_detail").remove("ipv6").putBoolean("direct_ready", false)
             .putBoolean("cf_connected", false).putLong("cf_probe", -1L).apply()
         wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "AndroidTunnel:service").also {
             it.setReferenceCounted(false); it.acquire()
@@ -121,6 +121,7 @@ class TunnelService : Service() {
             return
         }
         try {
+            if (!ensureTunForStartup()) return
             RelayRepository.purgeLegacy(this)
             val selected = RelayRepository.settings(this)
             if (selected.password.isBlank()) {
@@ -159,6 +160,13 @@ class TunnelService : Service() {
         } catch (e: Exception) {
             if (!stopping) failStartup("startup_failed", safeError(e))
         }
+    }
+
+    private fun ensureTunForStartup(): Boolean {
+        if (RootController.ensureTunDevice()) return !stopping
+        if (!stopping) failStartup("tun_device_failed",
+            "TUN 设备节点 /dev/net/tun 创建或复核失败（mknod/chmod 600，需字符设备），请检查 Root 权限、SELinux 或内核支持")
+        return false
     }
 
     private fun failStartup(code: String, detail: String) {
@@ -215,6 +223,7 @@ class TunnelService : Service() {
             lastNetwork = signature
             // Keep the AWG process/key and existing session on address change when possible.
             if (!RootController.alive("amneziawg-go")) {
+                if (!ensureTunForStartup()) return
                 RootController.cleanupInterface()
                 directReady = false
                 try {
@@ -306,6 +315,7 @@ class TunnelService : Service() {
         prefs.edit().putBoolean("running", false)
             .putString("mode", if (failureCode == null) TunnelMode.STOPPED.name else TunnelMode.FAILED.name)
             .putString("failure_code", failureCode)
+            .putString("failure_detail", if (failureCode == "tun_device_failed") failureDetail else null)
             .putString("detail", failureDetail ?: if (clean) "服务已停止" else "服务已停止，出口规则清理需检查")
             .remove("ipv6").putBoolean("direct_ready", false).putBoolean("cf_connected", false)
             .putLong("cf_probe", -1L).apply()

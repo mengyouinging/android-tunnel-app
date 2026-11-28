@@ -101,6 +101,13 @@ object RootController {
     private fun ok(command: String) = exec(command).exitCode == 0
     private fun check(command: String, message: String) { require(ok(command)) { message } }
 
+    // TUN may be absent after a reboot. Only create a missing node; never replace an existing path.
+    fun ensureTunDevice(): Boolean = runCatching {
+        ok("if test -e /dev/net/tun; then test -c /dev/net/tun; else " +
+            "mkdir -p /dev/net && mknod /dev/net/tun c 10 200 && chmod 600 /dev/net/tun && " +
+            "test -e /dev/net/tun && test -c /dev/net/tun; fi")
+    }.getOrDefault(false)
+
     fun installComponents(files: Map<String, File>): Boolean {
         if (!ok("mkdir -p $BIN && chmod 700 $BIN")) return false
         return components.all { name ->
