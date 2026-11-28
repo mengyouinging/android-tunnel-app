@@ -160,7 +160,7 @@ object DiagnosticsExporter {
             }
         }
 
-        val tun = if (rootOk) runCatching { RootController.diagnosticTun().output } else null
+        val tun = if (rootOk) runCatching { RootController.diagnosticTun().output }.getOrNull() else null
         sections += section(7, "TUN 设备") {
             line("Root 命令", tun?.let { DiagnosticsSanitizer.sanitize(it, secrets) } ?: "未获取：Root 未通过")
         }
