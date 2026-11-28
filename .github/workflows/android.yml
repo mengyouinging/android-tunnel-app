@@ -12,6 +12,28 @@ jobs:
   fetch-upstream:
     runs-on: ubuntu-24.04
     steps:
+      - name: Require fixed release signing secrets
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set +x
+          set -euo pipefail
+          missing=0
+          for secret_name in ANDROID_KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            value="${!secret_name:-}"
+            if [[ -z "${value//[[:space:]]/}" ]]; then
+              printf '::error::Missing required signing secret: %s\n' "$secret_name"
+              missing=1
+            fi
+          done
+          unset value
+          if (( missing != 0 )); then
+            exit 1
+          fi
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
@@ -92,25 +114,71 @@ jobs:
           yes | sdkmanager --licenses
           set -o pipefail
           sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0' 'emulator'
-      # build6 workflow omitted this step; without a keystore, the release
-      # signing config has no storeFile and :app:packageRelease fails with NPE.
-      # Same dev-keystore approach as the build5 workflow (CI only).
-      - name: Generate development keystore (CI only, not a release key)
-        env:
-          ANDROID_TUNNEL_KEYSTORE: ${{ github.workspace }}/src/android-tunnel-dev.jks
-          ANDROID_TUNNEL_STORE_PASSWORD: android-tunnel-dev
-          ANDROID_TUNNEL_KEY_PASSWORD: android-tunnel-dev
-          ANDROID_TUNNEL_KEY_ALIAS: android-tunnel-dev
-        run: bash src/scripts/generate-dev-keystore.sh
-      - name: Unit tests and release build
-        env:
-          ANDROID_TUNNEL_KEYSTORE: ${{ github.workspace }}/src/android-tunnel-dev.jks
-          ANDROID_TUNNEL_STORE_PASSWORD: android-tunnel-dev
-          ANDROID_TUNNEL_KEY_PASSWORD: android-tunnel-dev
-          ANDROID_TUNNEL_KEY_ALIAS: android-tunnel-dev
+      # Keep ordinary test/debug build logs separate from secret-bearing release signing.
+      - name: Unit tests and debug build
         run: |
           cd src
-          gradle testReleaseUnitTest assembleRelease assembleDebug --stacktrace
+          gradle testReleaseUnitTest assembleDebug --stacktrace
+      - name: Release build with fixed signing keystore
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set +x
+          set -euo pipefail
+          missing=0
+          for secret_name in ANDROID_KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            value="${!secret_name:-}"
+            if [[ -z "${value//[[:space:]]/}" ]]; then
+              printf '::error::Missing required signing secret: %s\n' "$secret_name"
+              missing=1
+            fi
+          done
+          unset value
+          if (( missing != 0 )); then
+            exit 1
+          fi
+          # Never write the keystore into the checkout or publish signing material.
+          umask 077
+          signing_dir="$(mktemp -d "${RUNNER_TEMP}/android-tunnel-signing.XXXXXXXX")"
+          release_dir="$PWD/src/app/build/outputs/apk/release"
+          cleanup_signing() {
+            local result=$?
+            if (( result != 0 )); then
+              rm -f -- "$release_dir/"*.apk
+            fi
+            rm -rf -- "$signing_dir"
+          }
+          trap cleanup_signing EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+          keystore="$signing_dir/release.jks"
+          if ! printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$keystore" 2>/dev/null || [[ ! -s "$keystore" ]]; then
+            printf '%s\n' '::error::Invalid or empty base64 keystore in ANDROID_KEYSTORE_BASE64'
+            exit 1
+          fi
+          chmod 600 "$keystore"
+          unset ANDROID_KEYSTORE_BASE64
+          export ANDROID_TUNNEL_KEYSTORE="$keystore"
+          export ANDROID_TUNNEL_STORE_PASSWORD="$KEYSTORE_PASSWORD"
+          export ANDROID_TUNNEL_KEY_ALIAS="$KEY_ALIAS"
+          export ANDROID_TUNNEL_KEY_PASSWORD="$KEY_PASSWORD"
+          unset KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD
+          # Keep signing configuration and any Gradle daemon logs out of shared caches.
+          export GRADLE_USER_HOME="$signing_dir/gradle-home"
+          cd src
+          if ! gradle assembleRelease --no-daemon --no-configuration-cache --no-build-cache --project-cache-dir "$signing_dir/project-cache" >/dev/null 2>&1; then
+            printf '%s\n' '::error::Release build/signing failed. Check the signing secrets and release build configuration (signing output suppressed).'
+            exit 1
+          fi
+          if ! "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify app/build/outputs/apk/release/app-release.apk >/dev/null 2>&1; then
+            printf '%s\n' '::error::Release APK signature verification failed.'
+            exit 1
+          fi
+          printf '%s\n' 'Release APK signature verification passed.'
       # Run #20 failed here: GitHub runners have no KVM, so the emulator
       # refuses software CPU emulation unless ANDROID_I_WANT_MY_TCG=yes.
       # TCG is slow, so give boot 1200s and keep the emulator light.
@@ -162,25 +230,24 @@ jobs:
             sleep 3
             for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
             adb exec-out screencap -p > artifacts/main.png
-            # V2: StatusActivity and SettingsActivity were deleted. The app is
-            # now a single MainActivity (big switch + top-right menu). Capture
-            # the overflow menu and the password dialog instead of the removed screens.
-            adb shell input keyevent 82
+            adb shell am start -n org.example.androidtunnel/.StatusActivity
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do adb shell dumpsys window windows 2>/dev/null | grep -q "mCurrentFocus.*StatusActivity" && break; sleep 2; done
+            adb shell dumpsys window windows | grep mCurrentFocus || true
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -i "not responding" || echo "NO ANR DIALOG FOUND"
             sleep 3
             sleep 3
             for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
-            adb exec-out screencap -p > artifacts/menu.png
-            # Tap the first overflow-menu item (password) on the 1080x1920 Pixel 2.
-            # If the tap misses, the shot just shows the menu again - harmless.
-            adb shell input tap 865 270
+            adb exec-out screencap -p > artifacts/status.png
+            adb shell am start -n org.example.androidtunnel/.SettingsActivity
+            for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do adb shell dumpsys window windows 2>/dev/null | grep -q "mCurrentFocus.*SettingsActivity" && break; sleep 2; done
+            adb shell dumpsys window windows | grep mCurrentFocus || true
             sleep 3
             adb shell dumpsys window windows 2>/dev/null | grep -i "not responding" || echo "NO ANR DIALOG FOUND"
             sleep 3
             sleep 3
             for i in 1 2 3 4 5 6 7 8 9 10 11 12; do adb shell dumpsys window windows 2>/dev/null | grep -qi "not responding" || break; echo "ANR present, waiting ($i/12)"; sleep 10; done
-            adb exec-out screencap -p > artifacts/password.png
+            adb exec-out screencap -p > artifacts/settings.png
             adb logcat -d > artifacts/logcat.txt || true
             ls -l artifacts/
       - uses: actions/upload-artifact@v4
